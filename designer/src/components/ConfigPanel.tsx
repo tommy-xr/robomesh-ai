@@ -4,11 +4,12 @@ import { ListEditor } from './ListEditor';
 
 interface ConfigPanelProps {
   node: Node<BaseNodeData> | null;
+  rootDirectory: string;
   onClose: () => void;
   onUpdate: (nodeId: string, data: Partial<BaseNodeData>) => void;
 }
 
-export function ConfigPanel({ node, onClose, onUpdate }: ConfigPanelProps) {
+export function ConfigPanel({ node, rootDirectory, onClose, onUpdate }: ConfigPanelProps) {
   if (!node) {
     return (
       <aside className="config-panel">
@@ -40,8 +41,8 @@ export function ConfigPanel({ node, onClose, onUpdate }: ConfigPanelProps) {
           />
         </div>
 
-        {nodeType === 'agent' && <AgentConfig node={node} onUpdate={onUpdate} />}
-        {nodeType === 'shell' && <ShellConfig node={node} onUpdate={onUpdate} />}
+        {nodeType === 'agent' && <AgentConfig node={node} rootDirectory={rootDirectory} onUpdate={onUpdate} />}
+        {nodeType === 'shell' && <ShellConfig node={node} rootDirectory={rootDirectory} onUpdate={onUpdate} />}
         {nodeType === 'trigger' && <TriggerConfig node={node} onUpdate={onUpdate} />}
         {nodeType === 'workdir' && <WorkdirConfig node={node} onUpdate={onUpdate} />}
       </div>
@@ -52,6 +53,7 @@ export function ConfigPanel({ node, onClose, onUpdate }: ConfigPanelProps) {
 interface NodeConfigProps {
   node: Node<BaseNodeData>;
   onUpdate: (nodeId: string, data: Partial<BaseNodeData>) => void;
+  rootDirectory?: string;
 }
 
 type Runner = 'claude-code' | 'codex' | 'gemini-cli' | 'aider';
@@ -85,7 +87,7 @@ const modelsByRunner: Record<Runner, ModelOption[]> = {
   ],
 };
 
-function AgentConfig({ node, onUpdate }: NodeConfigProps) {
+function AgentConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
   const runner = (node.data.runner as Runner) || '';
   const availableModels = runner ? modelsByRunner[runner] : [];
 
@@ -141,6 +143,7 @@ function AgentConfig({ node, onUpdate }: NodeConfigProps) {
           addButtonText="+ Add"
           emptyText="No files added"
           inputType="file"
+          rootDirectory={rootDirectory}
         />
       </div>
       <div className="config-field">
@@ -156,7 +159,7 @@ function AgentConfig({ node, onUpdate }: NodeConfigProps) {
   );
 }
 
-function ShellConfig({ node, onUpdate }: NodeConfigProps) {
+function ShellConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
   return (
     <>
       <div className="config-field">
@@ -178,6 +181,7 @@ function ShellConfig({ node, onUpdate }: NodeConfigProps) {
           addButtonText="+ Add"
           emptyText="No files added"
           inputType="file"
+          rootDirectory={rootDirectory}
         />
       </div>
       <div className="config-field">

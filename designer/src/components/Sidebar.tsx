@@ -29,6 +29,7 @@ interface SidebarProps {
   workflowName: string;
   rootDirectory: string;
   onImport: (nodes: Node<BaseNodeData>[], edges: Edge[], name: string, rootDir?: string) => void;
+  onNewWorkflow: () => void;
   onWorkflowNameChange: (name: string) => void;
   onRootDirectoryChange: (dir: string) => void;
 }
@@ -39,6 +40,7 @@ export function Sidebar({
   workflowName,
   rootDirectory,
   onImport,
+  onNewWorkflow,
   onWorkflowNameChange,
   onRootDirectoryChange,
 }: SidebarProps) {
@@ -85,7 +87,12 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-section">
-        <h2>Workflow</h2>
+        <div className="section-header">
+          <h2>Workflow</h2>
+          <button className="new-workflow-btn" onClick={onNewWorkflow} title="New Workflow">
+            + New
+          </button>
+        </div>
         <div className="workflow-field">
           <label>Name</label>
           <input

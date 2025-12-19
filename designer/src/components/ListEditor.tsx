@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FilePicker } from './FilePicker';
 
 interface ListEditorProps {
   items: string[];
@@ -7,6 +8,7 @@ interface ListEditorProps {
   addButtonText?: string;
   emptyText?: string;
   inputType?: 'text' | 'file';
+  rootDirectory?: string; // Required for file picker
 }
 
 export function ListEditor({
@@ -16,8 +18,10 @@ export function ListEditor({
   addButtonText = 'Add',
   emptyText = 'No items added',
   inputType = 'text',
+  rootDirectory,
 }: ListEditorProps) {
   const [newItem, setNewItem] = useState('');
+  const [showFilePicker, setShowFilePicker] = useState(false);
 
   const handleAdd = () => {
     if (newItem.trim()) {
@@ -42,6 +46,13 @@ export function ListEditor({
     updated[index] = value;
     onChange(updated);
   };
+
+  const handleFileSelect = (path: string) => {
+    onChange([...items, path]);
+    setShowFilePicker(false);
+  };
+
+  const canBrowse = inputType === 'file' && rootDirectory;
 
   return (
     <div className="list-editor">
@@ -80,7 +91,24 @@ export function ListEditor({
         <button onClick={handleAdd} disabled={!newItem.trim()}>
           {addButtonText}
         </button>
+        {canBrowse && (
+          <button
+            className="browse-btn"
+            onClick={() => setShowFilePicker(true)}
+            title="Browse files"
+          >
+            📁
+          </button>
+        )}
       </div>
+
+      {showFilePicker && rootDirectory && (
+        <FilePicker
+          rootDirectory={rootDirectory}
+          onSelect={handleFileSelect}
+          onClose={() => setShowFilePicker(false)}
+        />
+      )}
     </div>
   );
 }

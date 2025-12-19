@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import type { DragEvent } from 'react';
 import {
   ReactFlow,
@@ -17,10 +17,13 @@ import { nodeTypes } from './nodes';
 import type { BaseNodeData, NodeType } from './nodes';
 import { Sidebar } from './components/Sidebar';
 import { ConfigPanel } from './components/ConfigPanel';
+import { loadFromLocalStorage, saveToLocalStorage, clearLocalStorage } from './lib/storage';
 import './App.css';
 
-const initialNodes: Node<BaseNodeData>[] = [];
-const initialEdges: Edge[] = [];
+// Load initial state from localStorage
+const stored = loadFromLocalStorage();
+const initialNodes: Node<BaseNodeData>[] = stored?.nodes || [];
+const initialEdges: Edge[] = stored?.edges || [];
 
 let nodeId = 0;
 const getNodeId = () => `node_${nodeId++}`;
@@ -42,9 +45,28 @@ function Flow() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNode, setSelectedNode] = useState<Node<BaseNodeData> | null>(null);
-  const [workflowName, setWorkflowName] = useState('Untitled Workflow');
-  const [rootDirectory, setRootDirectory] = useState('');
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const [workflowName, setWorkflowName] = useState(stored?.workflowName || 'Untitled Workflow');
+  const [rootDirectory, setRootDirectory] = useState(stored?.rootDirectory || '');
+  const { screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
+
+  // Initialize node ID counter and restore viewport from loaded state
+  useEffect(() => {
+    if (initialNodes.length > 0) {
+      updateNodeIdCounter(initialNodes);
+    }
+    if (stored?.viewport) {
+      setViewport(stored.viewport);
+    }
+  }, [setViewport]);
+
+  // Auto-save to localStorage on changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      saveToLocalStorage(nodes, edges, workflowName, rootDirectory, getViewport());
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [nodes, edges, workflowName, rootDirectory, getViewport]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -96,6 +118,11 @@ function Flow() {
     setSelectedNode(null);
   }, []);
 
+  const onMoveEnd = useCallback(() => {
+    // Save viewport when user finishes panning/zooming
+    saveToLocalStorage(nodes, edges, workflowName, rootDirectory, getViewport());
+  }, [nodes, edges, workflowName, rootDirectory, getViewport]);
+
   const onUpdateNode = useCallback(
     (nodeId: string, data: Partial<BaseNodeData>) => {
       setNodes((nds) =>
@@ -129,6 +156,19 @@ function Flow() {
     [setNodes, setEdges, fitView]
   );
 
+  const onNewWorkflow = useCallback(() => {
+    if (nodes.length > 0 && !confirm('Start a new workflow? Current changes will be lost.')) {
+      return;
+    }
+    clearLocalStorage();
+    setNodes([]);
+    setEdges([]);
+    setWorkflowName('Untitled Workflow');
+    setRootDirectory('');
+    setSelectedNode(null);
+    nodeId = 0;
+  }, [nodes.length, setNodes, setEdges]);
+
   return (
     <div className="app">
       <Sidebar
@@ -137,6 +177,7 @@ function Flow() {
         workflowName={workflowName}
         rootDirectory={rootDirectory}
         onImport={onImport}
+        onNewWorkflow={onNewWorkflow}
         onWorkflowNameChange={setWorkflowName}
         onRootDirectoryChange={setRootDirectory}
       />
@@ -151,8 +192,9 @@ function Flow() {
           onDrop={onDrop}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
+          onMoveEnd={onMoveEnd}
           nodeTypes={nodeTypes}
-          fitView
+          fitView={!stored?.viewport}
           deleteKeyCode={['Backspace', 'Delete']}
           proOptions={{ hideAttribution: true }}
         >
@@ -162,6 +204,7 @@ function Flow() {
       </div>
       <ConfigPanel
         node={selectedNode}
+        rootDirectory={rootDirectory}
         onClose={() => setSelectedNode(null)}
         onUpdate={onUpdateNode}
       />
