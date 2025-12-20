@@ -13,7 +13,7 @@ export interface ExecuteRequest {
   startNodeId?: string;
 }
 
-export function createExecuteRouter() {
+export function createExecuteRouter(): Router {
   const router = Router();
 
   router.post('/', async (req, res) => {

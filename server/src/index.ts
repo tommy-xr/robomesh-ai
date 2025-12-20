@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Express } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,7 +12,7 @@ export interface ServerConfig {
   designerPath?: string; // Path to designer dist folder
 }
 
-export function createServer(config: ServerConfig) {
+export function createServer(config: ServerConfig): Express {
   const app = express();
 
   // Middleware
