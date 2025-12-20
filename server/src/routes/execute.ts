@@ -60,6 +60,70 @@ function buildAdjacencyMap(edges: WorkflowEdge[]): Map<string, string[]> {
 }
 
 /**
+ * Execution context - stores outputs from executed nodes
+ */
+interface ExecutionContext {
+  outputs: Map<string, string>;  // nodeId -> output
+  nodeLabels: Map<string, string>;  // nodeId -> label (for label-based lookups)
+}
+
+/**
+ * Replace template variables in a string
+ * Supports: {{ nodeId.output }} and {{ nodeLabel.output }}
+ */
+function replaceTemplates(text: string, context: ExecutionContext): string {
+  // Match {{ identifier.output }} patterns
+  const templateRegex = /\{\{\s*([a-zA-Z0-9_-]+)\.output\s*\}\}/g;
+
+  return text.replace(templateRegex, (match, identifier) => {
+    // First try direct nodeId lookup
+    if (context.outputs.has(identifier)) {
+      return context.outputs.get(identifier) || '';
+    }
+
+    // Then try label lookup (find nodeId by label)
+    for (const [nodeId, label] of context.nodeLabels) {
+      // Normalize label for comparison (lowercase, replace spaces with underscores)
+      const normalizedLabel = label.toLowerCase().replace(/\s+/g, '_');
+      if (normalizedLabel === identifier.toLowerCase() || label === identifier) {
+        if (context.outputs.has(nodeId)) {
+          return context.outputs.get(nodeId) || '';
+        }
+      }
+    }
+
+    // If not found, leave the template as-is (or could return empty string)
+    return match;
+  });
+}
+
+/**
+ * Process node data, replacing template variables in relevant fields
+ */
+function processNodeTemplates(node: WorkflowNode, context: ExecutionContext): WorkflowNode {
+  const processedData = { ...node.data };
+
+  // Process commands array for shell nodes
+  if (processedData.commands && Array.isArray(processedData.commands)) {
+    processedData.commands = processedData.commands.map(cmd =>
+      typeof cmd === 'string' ? replaceTemplates(cmd, context) : cmd
+    );
+  }
+
+  // Process prompt for agent nodes
+  if (processedData.prompt && typeof processedData.prompt === 'string') {
+    processedData.prompt = replaceTemplates(processedData.prompt, context);
+  }
+
+  // Process path
+  if (processedData.path && typeof processedData.path === 'string') {
+    processedData.path = replaceTemplates(processedData.path, context);
+  }
+
+  return { ...node, data: processedData };
+}
+
+/**
  * Find trigger nodes (nodes with no incoming edges, or explicit trigger type)
  */
 function findTriggerNodes(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[] {
@@ -234,6 +298,12 @@ export function createExecuteRouter() {
       const nodeMap = new Map(nodes.map(n => [n.id, n]));
       const adjacency = buildAdjacencyMap(edges);
 
+      // Build execution context with node labels for template lookups
+      const context: ExecutionContext = {
+        outputs: new Map(),
+        nodeLabels: new Map(nodes.map(n => [n.id, n.data.label || n.id])),
+      };
+
       // Determine starting node(s)
       let startNodes: string[];
       if (startNodeId) {
@@ -269,9 +339,23 @@ export function createExecuteRouter() {
 
         executionOrder.push(nodeId);
 
+        // Process templates in node data before execution
+        const processedNode = processNodeTemplates(node, context);
+
         // Execute this node
-        const result = await executeNode(node, rootDirectory || process.cwd());
+        const result = await executeNode(processedNode, rootDirectory || process.cwd());
         results.push(result);
+
+        // Store output in context for downstream nodes
+        if (result.output) {
+          // Store the raw output (without the "$ command" prefix for cleaner templates)
+          const rawOutput = result.output
+            .split('\n')
+            .filter(line => !line.startsWith('$ '))
+            .join('\n')
+            .trim();
+          context.outputs.set(nodeId, rawOutput);
+        }
 
         if (result.status === 'failed') {
           overallSuccess = false;
