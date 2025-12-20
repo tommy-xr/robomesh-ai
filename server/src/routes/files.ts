@@ -11,7 +11,7 @@ export interface FileEntry {
   modified?: string;
 }
 
-export function createFilesRouter() {
+export function createFilesRouter(): Router {
   const router = Router();
 
   // List files in a directory
