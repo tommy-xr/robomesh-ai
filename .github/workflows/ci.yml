@@ -17,12 +17,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # Disable npm cache due to platform-specific optional deps issue
+          # See: https://github.com/npm/cli/issues/4828
 
       - name: Install dependencies
-        # Use npm install instead of npm ci to resolve platform-specific optional deps
+        # Clean install to resolve platform-specific optional deps
         # See: https://github.com/npm/cli/issues/4828
-        run: npm install
+        run: |
+          rm -rf node_modules designer/node_modules server/node_modules
+          npm install
 
       - name: Build
         run: npm run build
