@@ -10,7 +10,7 @@
     "dev": "concurrently -n server,designer -c blue,magenta \"pnpm run -F server dev\" \"pnpm run -F designer dev\"",
     "build": "pnpm run -F server build && pnpm run -F designer build",
     "start": "pnpm run -F server start",
-    "shodan": "pnpm run -F server shodan --",
+    "shodan": "pnpm run -F server shodan",
     "test:workflows": "pnpm run -F server test:workflows"
   },
   "workspaces": [

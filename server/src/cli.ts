@@ -161,7 +161,8 @@ async function validateWorkflow(filePath: string): Promise<boolean> {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  // Filter out '--' which npm/pnpm use to separate script args
+  const args = process.argv.slice(2).filter(arg => arg !== '--');
 
   if (args.length === 0 || args[0] === 'help' || args[0] === '--help' || args[0] === '-h') {
     printUsage();
