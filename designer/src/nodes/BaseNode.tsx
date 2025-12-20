@@ -15,7 +15,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   promptFiles?: string[];
   outputSchema?: string;
   // Shell fields
-  commands?: string[];
+  script?: string; // Inline multi-line script
+  commands?: string[]; // Deprecated: for backwards compat with old workflows
   scriptFiles?: string[];
   outputVar?: string;
   // Trigger fields
@@ -83,10 +84,10 @@ export function BaseNode({ data, selected }: NodeProps) {
         }
         return null;
       case 'shell': {
-        const cmdCount = nodeData.commands?.length || 0;
+        const hasScript = nodeData.script?.trim() || (nodeData.commands?.length || 0) > 0;
         const fileCount = nodeData.scriptFiles?.length || 0;
         const parts = [];
-        if (cmdCount > 0) parts.push(`${cmdCount} cmd${cmdCount > 1 ? 's' : ''}`);
+        if (hasScript) parts.push('script');
         if (fileCount > 0) parts.push(`${fileCount} file${fileCount > 1 ? 's' : ''}`);
         return parts.length > 0 ? parts.join(', ') : null;
       }

@@ -294,6 +294,14 @@
   min-height: 100px;
 }
 
+.config-field textarea.script-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  min-height: 120px;
+  tab-size: 2;
+}
+
 /* Execution Output in Config Panel */
 .execution-output {
   margin-top: 20px;
@@ -633,6 +641,71 @@
 .list-add .browse-btn {
   padding: 6px 10px;
   font-size: 0.9rem;
+}
+
+/* Multiline list items (for shell commands/scripts) */
+.list-item.multiline {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.list-item.multiline textarea {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.list-item.multiline textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.list-item.multiline .list-item-remove {
+  align-self: flex-end;
+  margin-top: 4px;
+}
+
+.list-add.multiline {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.list-add.multiline textarea {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.list-add.multiline textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.list-add.multiline button {
+  align-self: flex-start;
+}
+
+.multiline-hint {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+  align-self: center;
 }
 
 /* File Picker */

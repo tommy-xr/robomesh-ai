@@ -8,7 +8,8 @@ export interface WorkflowNode {
   data: {
     label?: string;
     nodeType?: string;
-    commands?: string[];
+    script?: string; // New: single multi-line script
+    commands?: string[]; // Legacy: array of commands
     scriptFiles?: string[];
     path?: string;
     prompt?: string;
@@ -46,6 +47,7 @@ export interface NodeResult {
   nodeId: string;
   status: NodeStatus;
   output?: string;
+  rawOutput?: string; // Clean output without command prefixes, used for templating
   error?: string;
   exitCode?: number;
   startTime?: string;
@@ -116,6 +118,10 @@ function replaceTemplates(text: string, context: ExecutionContext): string {
  */
 function processNodeTemplates(node: WorkflowNode, context: ExecutionContext): WorkflowNode {
   const processedData = { ...node.data };
+
+  if (processedData.script && typeof processedData.script === 'string') {
+    processedData.script = replaceTemplates(processedData.script, context);
+  }
 
   if (processedData.commands && Array.isArray(processedData.commands)) {
     processedData.commands = processedData.commands.map(cmd =>
@@ -206,26 +212,36 @@ async function executeNode(
   const cwd = (node.data.path as string) || rootDirectory || process.cwd();
 
   if (nodeType === 'shell') {
-    const commands = (node.data.commands as string[]) || [];
+    // Support both new 'script' field and legacy 'commands' array
+    const script = node.data.script as string | undefined;
+    const legacyCommands = (node.data.commands as string[]) || [];
 
-    if (commands.length === 0) {
+    // Determine what to execute: prefer script, fall back to legacy commands
+    const commandsToRun: string[] = script?.trim()
+      ? [script]
+      : legacyCommands;
+
+    if (commandsToRun.length === 0 || !commandsToRun.some(c => c.trim())) {
       return {
         nodeId: node.id,
         status: 'completed',
-        output: '(no commands to execute)',
+        output: '(no script to execute)',
+        rawOutput: '',
         startTime,
         endTime: new Date().toISOString(),
       };
     }
 
     const outputs: string[] = [];
+    const rawOutputs: string[] = [];
     let lastExitCode = 0;
 
-    for (const command of commands) {
+    for (const command of commandsToRun) {
       if (!command.trim()) continue;
 
       const result = await executeShellCommand(command, cwd);
       outputs.push(`$ ${command}\n${result.output}`);
+      rawOutputs.push(result.output);
       lastExitCode = result.exitCode;
 
       if (result.exitCode !== 0) {
@@ -233,8 +249,9 @@ async function executeNode(
           nodeId: node.id,
           status: 'failed',
           output: outputs.join('\n\n'),
+          rawOutput: rawOutputs.join('\n'),
           exitCode: result.exitCode,
-          error: `Command failed with exit code ${result.exitCode}`,
+          error: `Script failed with exit code ${result.exitCode}`,
           startTime,
           endTime: new Date().toISOString(),
         };
@@ -245,6 +262,7 @@ async function executeNode(
       nodeId: node.id,
       status: 'completed',
       output: outputs.join('\n\n'),
+      rawOutput: rawOutputs.join('\n'),
       exitCode: lastExitCode,
       startTime,
       endTime: new Date().toISOString(),
@@ -341,13 +359,12 @@ export async function executeWorkflow(
       onNodeComplete(nodeId, result);
     }
 
-    if (result.output) {
-      const rawOutput = result.output
-        .split('\n')
-        .filter(line => !line.startsWith('$ '))
-        .join('\n')
-        .trim();
-      context.outputs.set(nodeId, rawOutput);
+    // Store raw output for template substitution
+    if (result.rawOutput !== undefined) {
+      context.outputs.set(nodeId, result.rawOutput.trim());
+    } else if (result.output) {
+      // Fallback for nodes that don't set rawOutput
+      context.outputs.set(nodeId, result.output.trim());
     }
 
     if (result.status === 'failed') {

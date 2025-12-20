@@ -73,6 +73,51 @@ describe('Workflow Execution', () => {
       `Output should contain summary header, got: ${summaryResult.output}`
     );
   });
+
+  test('multi-line-demo.yaml executes multi-line scripts correctly', async () => {
+    const schema = await loadWorkflow('multi-line-demo.yaml');
+    schema.metadata.rootDirectory = WORKFLOWS_DIR;
+
+    const result = await executeWorkflowSchema(schema);
+
+    assert.strictEqual(result.success, true, 'Workflow should succeed');
+
+    // Test for loop output
+    const loopResult = result.results.find(r => r.nodeId === 'shell_loop');
+    assert.ok(loopResult, 'Should have shell_loop result');
+    assert.ok(
+      loopResult.rawOutput?.includes('Sum: 15'),
+      `Loop should calculate sum correctly, got: ${loopResult.rawOutput}`
+    );
+
+    // Test conditional output
+    const conditionalResult = result.results.find(r => r.nodeId === 'shell_conditional');
+    assert.ok(conditionalResult, 'Should have shell_conditional result');
+    assert.ok(
+      conditionalResult.rawOutput?.includes('YAML files'),
+      `Conditional should find YAML files, got: ${conditionalResult.rawOutput}`
+    );
+
+    // Test here-doc output
+    const heredocResult = result.results.find(r => r.nodeId === 'shell_heredoc');
+    assert.ok(heredocResult, 'Should have shell_heredoc result');
+    assert.ok(
+      heredocResult.rawOutput?.includes('=== Report ==='),
+      `Heredoc should contain report header, got: ${heredocResult.rawOutput}`
+    );
+
+    // Test summary has correct template substitution (uses rawOutput from previous nodes)
+    const summaryResult = result.results.find(r => r.nodeId === 'shell_summary');
+    assert.ok(summaryResult, 'Should have shell_summary result');
+    assert.ok(
+      summaryResult.rawOutput?.includes('Loop result: Sum: 15'),
+      `Summary should have substituted loop result, got: ${summaryResult.rawOutput}`
+    );
+    assert.ok(
+      !summaryResult.output?.includes('{{ '),
+      `Summary should not have unreplaced templates, got: ${summaryResult.output}`
+    );
+  });
 });
 
 describe('Workflow Validation', () => {

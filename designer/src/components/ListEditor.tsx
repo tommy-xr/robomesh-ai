@@ -9,6 +9,7 @@ interface ListEditorProps {
   emptyText?: string;
   inputType?: 'text' | 'file';
   rootDirectory?: string; // Required for file picker
+  multiline?: boolean; // Use textarea instead of input for multi-line content
 }
 
 export function ListEditor({
@@ -19,6 +20,7 @@ export function ListEditor({
   emptyText = 'No items added',
   inputType = 'text',
   rootDirectory,
+  multiline = false,
 }: ListEditorProps) {
   const [newItem, setNewItem] = useState('');
   const [showFilePicker, setShowFilePicker] = useState(false);
@@ -35,9 +37,17 @@ export function ListEditor({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAdd();
+    // For multiline, use Cmd/Ctrl+Enter to add; for single line, just Enter
+    if (multiline) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleAdd();
+      }
+    } else {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAdd();
+      }
     }
   };
 
@@ -61,13 +71,21 @@ export function ListEditor({
           <div className="list-empty">{emptyText}</div>
         ) : (
           items.map((item, index) => (
-            <div key={index} className="list-item">
-              <input
-                type="text"
-                value={item}
-                onChange={(e) => handleUpdate(index, e.target.value)}
-                className={inputType === 'file' ? 'file-input' : ''}
-              />
+            <div key={index} className={`list-item ${multiline ? 'multiline' : ''}`}>
+              {multiline ? (
+                <textarea
+                  value={item}
+                  onChange={(e) => handleUpdate(index, e.target.value)}
+                  rows={Math.max(3, item.split('\n').length)}
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={item}
+                  onChange={(e) => handleUpdate(index, e.target.value)}
+                  className={inputType === 'file' ? 'file-input' : ''}
+                />
+              )}
               <button
                 className="list-item-remove"
                 onClick={() => handleRemove(index)}
@@ -79,15 +97,25 @@ export function ListEditor({
           ))
         )}
       </div>
-      <div className="list-add">
-        <input
-          type="text"
-          value={newItem}
-          onChange={(e) => setNewItem(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className={inputType === 'file' ? 'file-input' : ''}
-        />
+      <div className={`list-add ${multiline ? 'multiline' : ''}`}>
+        {multiline ? (
+          <textarea
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            rows={3}
+          />
+        ) : (
+          <input
+            type="text"
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className={inputType === 'file' ? 'file-input' : ''}
+          />
+        )}
         <button onClick={handleAdd} disabled={!newItem.trim()}>
           {addButtonText}
         </button>
@@ -99,6 +127,9 @@ export function ListEditor({
           >
             📁
           </button>
+        )}
+        {multiline && (
+          <span className="multiline-hint">⌘/Ctrl+Enter to add</span>
         )}
       </div>
 

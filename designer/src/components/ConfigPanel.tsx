@@ -183,16 +183,25 @@ function AgentConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
 }
 
 function ShellConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
+  // Support both new 'script' field and legacy 'commands' array
+  const scriptValue = (node.data.script as string) ||
+    ((node.data.commands as string[]) || []).join('\n');
+
+  const handleScriptChange = (value: string) => {
+    // Clear legacy commands when using new script field
+    onUpdate(node.id, { script: value, commands: undefined });
+  };
+
   return (
     <>
       <div className="config-field">
-        <label>Commands</label>
-        <ListEditor
-          items={(node.data.commands as string[]) || []}
-          onChange={(cmds) => onUpdate(node.id, { commands: cmds })}
-          placeholder="e.g., npm run build"
-          addButtonText="+ Add"
-          emptyText="No commands added"
+        <label>Script</label>
+        <textarea
+          value={scriptValue}
+          onChange={(e) => handleScriptChange(e.target.value)}
+          placeholder="Enter shell commands..."
+          className="script-editor"
+          rows={6}
         />
       </div>
       <div className="config-field">

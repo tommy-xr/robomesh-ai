@@ -1,0 +1,86 @@
+version: 1
+metadata:
+  name: Multi-line Script Demo
+  description: Demonstrates multi-line shell scripts with loops, variables, and conditionals
+  rootDirectory: .
+
+nodes:
+  - id: trigger_1
+    type: trigger
+    position: { x: 100, y: 150 }
+    data:
+      label: Start
+      nodeType: trigger
+      triggerType: manual
+
+  - id: shell_loop
+    type: shell
+    position: { x: 300, y: 50 }
+    data:
+      label: For Loop
+      nodeType: shell
+      script: |
+        total=0
+        for i in 1 2 3 4 5; do
+          total=$((total + i))
+        done
+        echo "Sum: $total"
+
+  - id: shell_conditional
+    type: shell
+    position: { x: 300, y: 150 }
+    data:
+      label: Conditional
+      nodeType: shell
+      script: |
+        count=$(ls -1 *.yaml 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$count" -gt 0 ]; then
+          echo "Found $count YAML files"
+        else
+          echo "No YAML files found"
+        fi
+
+  - id: shell_heredoc
+    type: shell
+    position: { x: 300, y: 250 }
+    data:
+      label: Here-doc
+      nodeType: shell
+      script: |
+        cat <<EOF
+        === Report ===
+        Date: $(date +%Y-%m-%d)
+        User: $(whoami)
+        === End ===
+        EOF
+
+  - id: shell_summary
+    type: shell
+    position: { x: 550, y: 150 }
+    data:
+      label: Summary
+      nodeType: shell
+      script: |
+        echo "Multi-line scripts completed successfully"
+        echo "Loop result: {{ for_loop.output }}"
+        echo "Conditional result: {{ conditional.output }}"
+
+edges:
+  - id: e1
+    source: trigger_1
+    target: shell_loop
+  - id: e2
+    source: trigger_1
+    target: shell_conditional
+  - id: e3
+    source: trigger_1
+    target: shell_heredoc
+  - id: e4
+    source: shell_loop
+    target: shell_summary
+  - id: e5
+    source: shell_conditional
+    target: shell_summary
+  - id: e6
+    source: shell_heredoc
+    target: shell_summary
