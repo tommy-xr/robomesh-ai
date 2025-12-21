@@ -2,7 +2,6 @@ version: 1
 metadata:
   name: Project Info
   description: Gathers information about the current project
-  rootDirectory: .
 
 nodes:
   - id: trigger_1

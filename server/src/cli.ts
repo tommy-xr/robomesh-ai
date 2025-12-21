@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'js-yaml';
 import { executeWorkflowSchema, type WorkflowSchema, type NodeResult } from './engine/executor.js';
+import { getProjectRoot } from './utils/project-root.js';
 
 // Use INIT_CWD if available (set by npm to the original working directory)
 const originalCwd = process.env.INIT_CWD || process.cwd();
@@ -70,12 +71,16 @@ async function loadWorkflow(filePath: string): Promise<WorkflowSchema> {
     throw new Error('Invalid workflow: edges must be an array');
   }
 
-  // If rootDirectory is relative, resolve it relative to the workflow file
-  if (schema.metadata.rootDirectory && !path.isAbsolute(schema.metadata.rootDirectory)) {
-    schema.metadata.rootDirectory = path.resolve(
-      path.dirname(absolutePath),
-      schema.metadata.rootDirectory
-    );
+  // Resolve rootDirectory - use project root discovery
+  const workflowDir = path.dirname(absolutePath);
+  if (schema.metadata.rootDirectory) {
+    // If specified and relative, resolve relative to workflow file
+    if (!path.isAbsolute(schema.metadata.rootDirectory)) {
+      schema.metadata.rootDirectory = path.resolve(workflowDir, schema.metadata.rootDirectory);
+    }
+  } else {
+    // Use project root discovery (looks for .shodan, .git, package.json)
+    schema.metadata.rootDirectory = getProjectRoot(workflowDir);
   }
 
   return schema;

@@ -22,6 +22,7 @@
   /* Neon node colors */
   --node-agent: #05d9e8;
   --node-shell: #01ffc3;
+  --node-script: #f59e0b;
   --node-trigger: #ff2a6d;
   --node-workdir: #d300c5;
 
@@ -30,6 +31,7 @@
   --glow-pink: 0 0 10px #ff2a6d, 0 0 20px #ff2a6d44;
   --glow-green: 0 0 10px #01ffc3, 0 0 20px #01ffc344;
   --glow-purple: 0 0 10px #d300c5, 0 0 20px #d300c544;
+  --glow-orange: 0 0 10px #f59e0b, 0 0 20px #f59e0b44;
 }
 
 html, body, #root {

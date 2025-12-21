@@ -12,6 +12,8 @@ export interface WorkflowNode {
     script?: string; // New: single multi-line script
     commands?: string[]; // Legacy: array of commands
     scriptFiles?: string[];
+    scriptFile?: string; // Script node: path to .js, .ts, or .sh file
+    scriptArgs?: string; // Script node: arguments to pass
     path?: string;
     prompt?: string;
     [key: string]: unknown;
@@ -136,6 +138,14 @@ function processNodeTemplates(node: WorkflowNode, context: ExecutionContext): Wo
 
   if (processedData.path && typeof processedData.path === 'string') {
     processedData.path = replaceTemplates(processedData.path, context);
+  }
+
+  if (processedData.scriptFile && typeof processedData.scriptFile === 'string') {
+    processedData.scriptFile = replaceTemplates(processedData.scriptFile, context);
+  }
+
+  if (processedData.scriptArgs && typeof processedData.scriptArgs === 'string') {
+    processedData.scriptArgs = replaceTemplates(processedData.scriptArgs, context);
   }
 
   return { ...node, data: processedData };
@@ -285,6 +295,59 @@ async function executeNode(
       nodeId: node.id,
       status: 'completed',
       output: `Working directory: ${node.data.path || '(not set)'}`,
+      startTime,
+      endTime: new Date().toISOString(),
+    };
+  }
+
+  if (nodeType === 'script') {
+    const scriptFile = node.data.scriptFile as string | undefined;
+    const scriptArgs = node.data.scriptArgs as string | undefined;
+
+    if (!scriptFile?.trim()) {
+      return {
+        nodeId: node.id,
+        status: 'failed',
+        output: '',
+        error: 'Script node requires a script file to be specified',
+        startTime,
+        endTime: new Date().toISOString(),
+      };
+    }
+
+    // Determine the runner based on file extension
+    let command: string;
+    const args = scriptArgs?.trim() || '';
+
+    if (scriptFile.endsWith('.ts')) {
+      // TypeScript - use tsx
+      command = `npx tsx "${scriptFile}" ${args}`.trim();
+    } else if (scriptFile.endsWith('.js')) {
+      // JavaScript - use node
+      command = `node "${scriptFile}" ${args}`.trim();
+    } else if (scriptFile.endsWith('.sh')) {
+      // Bash script
+      command = `bash "${scriptFile}" ${args}`.trim();
+    } else {
+      return {
+        nodeId: node.id,
+        status: 'failed',
+        output: '',
+        error: `Unsupported script type: ${scriptFile}. Supported extensions: .ts, .js, .sh`,
+        startTime,
+        endTime: new Date().toISOString(),
+      };
+    }
+
+    const result = await executeShellCommand(command, cwd);
+
+    return {
+      nodeId: node.id,
+      status: result.exitCode === 0 ? 'completed' : 'failed',
+      output: `$ ${command}\n${result.output}`,
+      rawOutput: result.output,
+      exitCode: result.exitCode,
+      error: result.exitCode !== 0 ? `Script exited with code ${result.exitCode}` : undefined,
       startTime,
       endTime: new Date().toISOString(),
     };

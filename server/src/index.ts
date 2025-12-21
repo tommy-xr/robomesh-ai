@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createFilesRouter } from './routes/files.js';
 import { createExecuteRouter } from './routes/execute.js';
+import { createConfigRouter } from './routes/config.js';
+import { getProjectRoot, getProjectRootMarker } from './utils/project-root.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,9 +21,14 @@ export function createServer(config: ServerConfig): Express {
   app.use(cors());
   app.use(express.json());
 
+  // Discover project root
+  const projectRoot = getProjectRoot();
+  const rootMarker = getProjectRootMarker(projectRoot);
+
   // API routes
+  app.use('/api/config', createConfigRouter());
   app.use('/api/files', createFilesRouter());
-  app.use('/api/execute', createExecuteRouter());
+  app.use('/api/execute', createExecuteRouter(projectRoot));
 
   // Health check
   app.get('/api/health', (_req, res) => {
@@ -51,9 +58,14 @@ if (isMainModule) {
 
   const app = createServer(config);
 
+  // Discover project root for logging
+  const discoveredRoot = getProjectRoot();
+  const discoveredMarker = getProjectRootMarker(discoveredRoot);
+
   app.listen(config.port, () => {
     console.log(`Shodan server running at http://localhost:${config.port}`);
     console.log(`  API: http://localhost:${config.port}/api`);
+    console.log(`  Project root: ${discoveredRoot} (${discoveredMarker || 'fallback'})`);
     if (config.designerPath) {
       console.log(`  Designer: http://localhost:${config.port}`);
     }
