@@ -2,7 +2,6 @@ version: 1
 metadata:
   name: Agent Demo
   description: Tests agent runners with a simple greeting prompt
-  rootDirectory: .
 
 nodes:
   - id: trigger_1

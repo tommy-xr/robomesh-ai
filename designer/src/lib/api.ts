@@ -2,6 +2,22 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
+// Config types
+export interface ConfigResponse {
+  projectRoot: string;
+  rootMarker: string | null;
+}
+
+export async function getConfig(): Promise<ConfigResponse> {
+  const response = await fetch(`${API_BASE}/config`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch config');
+  }
+
+  return response.json();
+}
+
 export interface FileEntry {
   name: string;
   path: string;

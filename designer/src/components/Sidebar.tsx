@@ -19,6 +19,7 @@ interface PaletteItem {
 const paletteItems: PaletteItem[] = [
   { type: 'agent', label: 'Agent', icon: '🤖' },
   { type: 'shell', label: 'Shell', icon: '⌘' },
+  { type: 'script', label: 'Script', icon: '📜' },
   { type: 'trigger', label: 'Trigger', icon: '⚡' },
   { type: 'workdir', label: 'Working Dir', icon: '📁' },
 ];
@@ -27,12 +28,10 @@ interface SidebarProps {
   nodes: Node<BaseNodeData>[];
   edges: Edge[];
   workflowName: string;
-  rootDirectory: string;
   isExecuting: boolean;
   onImport: (nodes: Node<BaseNodeData>[], edges: Edge[], name: string, rootDir?: string) => void;
   onNewWorkflow: () => void;
   onWorkflowNameChange: (name: string) => void;
-  onRootDirectoryChange: (dir: string) => void;
   onExecute: () => void;
   onResetExecution: () => void;
 }
@@ -41,12 +40,10 @@ export function Sidebar({
   nodes,
   edges,
   workflowName,
-  rootDirectory,
   isExecuting,
   onImport,
   onNewWorkflow,
   onWorkflowNameChange,
-  onRootDirectoryChange,
   onExecute,
   onResetExecution,
 }: SidebarProps) {
@@ -61,7 +58,8 @@ export function Sidebar({
   const handleExport = () => {
     setError(null);
     try {
-      const metadata = { name: workflowName, rootDirectory };
+      // Don't include rootDirectory - it's determined by project root discovery
+      const metadata = { name: workflowName };
       if (exportFormat === 'json') {
         const content = exportToJSON(nodes, edges, metadata);
         downloadFile(content, `${workflowName || 'workflow'}.json`, 'application/json');
@@ -106,16 +104,6 @@ export function Sidebar({
             value={workflowName}
             onChange={(e) => onWorkflowNameChange(e.target.value)}
             placeholder="Workflow name..."
-          />
-        </div>
-        <div className="workflow-field">
-          <label>Root Directory</label>
-          <input
-            type="text"
-            value={rootDirectory}
-            onChange={(e) => onRootDirectoryChange(e.target.value)}
-            placeholder="e.g., /path/to/project"
-            className="monospace"
           />
         </div>
       </div>

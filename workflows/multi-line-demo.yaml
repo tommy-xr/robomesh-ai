@@ -2,7 +2,6 @@ version: 1
 metadata:
   name: Multi-line Script Demo
   description: Demonstrates multi-line shell scripts with loops, variables, and conditionals
-  rootDirectory: .
 
 nodes:
   - id: trigger_1

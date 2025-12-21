@@ -28,6 +28,14 @@
   box-shadow: 0 0 0 2px var(--node-shell), var(--glow-green);
 }
 
+.custom-node.script {
+  border-color: var(--node-script);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.2);
+}
+.custom-node.script.selected {
+  box-shadow: 0 0 0 2px var(--node-script), var(--glow-orange);
+}
+
 .custom-node.trigger {
   border-color: var(--node-trigger);
   box-shadow: 0 4px 20px rgba(255, 42, 109, 0.2);
@@ -46,6 +54,7 @@
 
 .custom-node.agent .node-header { background: linear-gradient(90deg, var(--node-agent), #00b4d8); }
 .custom-node.shell .node-header { background: linear-gradient(90deg, var(--node-shell), #00d9a5); }
+.custom-node.script .node-header { background: linear-gradient(90deg, var(--node-script), #fbbf24); }
 .custom-node.trigger .node-header { background: linear-gradient(90deg, var(--node-trigger), #ff6b9d); }
 .custom-node.workdir .node-header { background: linear-gradient(90deg, var(--node-workdir), #ff00ff); }
 
@@ -153,6 +162,14 @@
 .custom-node.trigger .handle:hover {
   background: var(--node-trigger) !important;
   box-shadow: 0 0 10px var(--node-trigger);
+}
+
+.custom-node.script .handle {
+  border-color: var(--node-script) !important;
+}
+.custom-node.script .handle:hover {
+  background: var(--node-script) !important;
+  box-shadow: 0 0 10px var(--node-script);
 }
 
 .custom-node.workdir .handle {

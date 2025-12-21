@@ -2,7 +2,6 @@ version: 1
 metadata:
   name: Git Branch Info
   description: Demonstrates template syntax by passing git branch to downstream nodes
-  rootDirectory: .
 
 nodes:
   - id: trigger_1

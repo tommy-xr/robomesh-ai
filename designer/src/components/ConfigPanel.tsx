@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import type { Node } from '@xyflow/react';
 import type { BaseNodeData, NodeType } from '../nodes';
 import { ListEditor } from './ListEditor';
+import { FilePicker } from './FilePicker';
 
 interface ConfigPanelProps {
   node: Node<BaseNodeData> | null;
@@ -42,7 +44,8 @@ export function ConfigPanel({ node, rootDirectory, onClose, onUpdate }: ConfigPa
         </div>
 
         {nodeType === 'agent' && <AgentConfig node={node} rootDirectory={rootDirectory} onUpdate={onUpdate} />}
-        {nodeType === 'shell' && <ShellConfig node={node} rootDirectory={rootDirectory} onUpdate={onUpdate} />}
+        {nodeType === 'shell' && <ShellConfig node={node} onUpdate={onUpdate} />}
+        {nodeType === 'script' && <ScriptConfig node={node} rootDirectory={rootDirectory} onUpdate={onUpdate} />}
         {nodeType === 'trigger' && <TriggerConfig node={node} onUpdate={onUpdate} />}
         {nodeType === 'workdir' && <WorkdirConfig node={node} onUpdate={onUpdate} />}
 
@@ -181,7 +184,7 @@ function AgentConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
   );
 }
 
-function ShellConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
+function ShellConfig({ node, onUpdate }: Omit<NodeConfigProps, 'rootDirectory'>) {
   // Support both new 'script' field and legacy 'commands' array
   const scriptValue = (node.data.script as string) ||
     ((node.data.commands as string[]) || []).join('\n');
@@ -194,7 +197,7 @@ function ShellConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
   return (
     <>
       <div className="config-field">
-        <label>Script</label>
+        <label>Inline Script</label>
         <textarea
           value={scriptValue}
           onChange={(e) => handleScriptChange(e.target.value)}
@@ -203,27 +206,77 @@ function ShellConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
           rows={6}
         />
       </div>
+    </>
+  );
+}
+
+function ScriptConfig({ node, rootDirectory, onUpdate }: NodeConfigProps) {
+  const [showFilePicker, setShowFilePicker] = useState(false);
+  const scriptFile = (node.data.scriptFile as string) || '';
+
+  const getFileType = (path: string): string => {
+    if (path.endsWith('.ts')) return 'TypeScript';
+    if (path.endsWith('.js')) return 'JavaScript';
+    if (path.endsWith('.sh')) return 'Bash';
+    return 'Unknown';
+  };
+
+  const handleFileSelect = (path: string) => {
+    onUpdate(node.id, { scriptFile: path });
+    setShowFilePicker(false);
+  };
+
+  return (
+    <>
       <div className="config-field">
-        <label>Script Files (relative to root)</label>
-        <ListEditor
-          items={(node.data.scriptFiles as string[]) || []}
-          onChange={(files) => onUpdate(node.id, { scriptFiles: files })}
-          placeholder="e.g., scripts/deploy.sh"
-          addButtonText="+ Add"
-          emptyText="No files added"
-          inputType="file"
-          rootDirectory={rootDirectory}
-        />
+        <label>Script File</label>
+        <div className="file-input-group">
+          <input
+            type="text"
+            value={scriptFile}
+            onChange={(e) => onUpdate(node.id, { scriptFile: e.target.value })}
+            placeholder="e.g., scripts/build.ts"
+            className="monospace"
+          />
+          <button
+            className="browse-btn"
+            onClick={() => setShowFilePicker(true)}
+            disabled={!rootDirectory}
+          >
+            Browse
+          </button>
+        </div>
+        {scriptFile && (
+          <div className="file-type-hint">
+            Type: {getFileType(scriptFile)}
+          </div>
+        )}
       </div>
       <div className="config-field">
-        <label>Output Variable</label>
+        <label>Arguments</label>
         <input
           type="text"
-          value={(node.data.outputVar as string) || ''}
-          onChange={(e) => onUpdate(node.id, { outputVar: e.target.value })}
-          placeholder="e.g., buildResult"
+          value={(node.data.scriptArgs as string) || ''}
+          onChange={(e) => onUpdate(node.id, { scriptArgs: e.target.value })}
+          placeholder="e.g., --verbose --output=dist"
         />
       </div>
+      <div className="config-field script-info">
+        <label>Supported File Types</label>
+        <ul className="file-type-list">
+          <li><code>.ts</code> - TypeScript (via tsx)</li>
+          <li><code>.js</code> - JavaScript (via node)</li>
+          <li><code>.sh</code> - Bash script</li>
+        </ul>
+      </div>
+      {showFilePicker && rootDirectory && (
+        <FilePicker
+          rootDirectory={rootDirectory}
+          onSelect={handleFileSelect}
+          onClose={() => setShowFilePicker(false)}
+          filter="*.ts,*.js,*.sh"
+        />
+      )}
     </>
   );
 }

@@ -13,7 +13,7 @@ export interface ExecuteRequest {
   startNodeId?: string;
 }
 
-export function createExecuteRouter(): Router {
+export function createExecuteRouter(defaultProjectRoot: string): Router {
   const router = Router();
 
   router.post('/', async (req, res) => {
@@ -28,8 +28,11 @@ export function createExecuteRouter(): Router {
         return res.status(400).json({ error: 'edges array is required' });
       }
 
+      // Use provided rootDirectory, or fall back to discovered project root
+      const effectiveRoot = rootDirectory || defaultProjectRoot;
+
       const result: ExecuteResult = await executeWorkflow(nodes, edges, {
-        rootDirectory,
+        rootDirectory: effectiveRoot,
         startNodeId,
       });
 

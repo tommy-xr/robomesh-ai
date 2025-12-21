@@ -2,7 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import './nodes.css';
 
-export type NodeType = 'agent' | 'shell' | 'trigger' | 'workdir';
+export type NodeType = 'agent' | 'shell' | 'script' | 'trigger' | 'workdir';
 export type ExecutionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed';
 
 export interface BaseNodeData extends Record<string, unknown> {
@@ -22,6 +22,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   // Trigger fields
   triggerType?: string;
   cron?: string;
+  // Script node fields
+  scriptFile?: string; // Path to .js, .ts, or .sh file
+  scriptArgs?: string; // Arguments to pass to the script
   // Working directory fields
   path?: string;
   // Execution state
@@ -33,6 +36,7 @@ export interface BaseNodeData extends Record<string, unknown> {
 const nodeIcons: Record<NodeType, string> = {
   agent: '🤖',
   shell: '⌘',
+  script: '📜',
   trigger: '⚡',
   workdir: '📁',
 };
@@ -40,6 +44,7 @@ const nodeIcons: Record<NodeType, string> = {
 const nodeLabels: Record<NodeType, string> = {
   agent: 'Agent',
   shell: 'Shell',
+  script: 'Script',
   trigger: 'Trigger',
   workdir: 'Working Dir',
 };
@@ -90,6 +95,13 @@ export function BaseNode({ data, selected }: NodeProps) {
         if (hasScript) parts.push('script');
         if (fileCount > 0) parts.push(`${fileCount} file${fileCount > 1 ? 's' : ''}`);
         return parts.length > 0 ? parts.join(', ') : null;
+      }
+      case 'script': {
+        if (nodeData.scriptFile) {
+          const fileName = nodeData.scriptFile.split('/').pop() || nodeData.scriptFile;
+          return fileName;
+        }
+        return null;
       }
       case 'trigger':
         return nodeData.triggerType ? triggerLabels[nodeData.triggerType] || nodeData.triggerType : null;

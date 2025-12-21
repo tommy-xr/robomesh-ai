@@ -18,7 +18,7 @@ import type { BaseNodeData, NodeType } from './nodes';
 import { Sidebar } from './components/Sidebar';
 import { ConfigPanel } from './components/ConfigPanel';
 import { loadFromLocalStorage, saveToLocalStorage, clearLocalStorage } from './lib/storage';
-import { executeWorkflow } from './lib/api';
+import { executeWorkflow, getConfig } from './lib/api';
 import type { ExecutionStatus } from './nodes';
 import './App.css';
 
@@ -61,6 +61,22 @@ function Flow() {
       setViewport(stored.viewport);
     }
   }, [setViewport]);
+
+  // Fetch project root from server and set as default if not already set or if relative
+  useEffect(() => {
+    const needsProjectRoot = !rootDirectory || rootDirectory === '.' || !rootDirectory.startsWith('/');
+    if (needsProjectRoot) {
+      getConfig()
+        .then((config) => {
+          if (config.projectRoot) {
+            setRootDirectory(config.projectRoot);
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to fetch project config:', err);
+        });
+    }
+  }, []);
 
   // Auto-save to localStorage on changes (debounced)
   useEffect(() => {
@@ -146,12 +162,16 @@ function Flow() {
   );
 
   const onImport = useCallback(
-    (importedNodes: Node<BaseNodeData>[], importedEdges: Edge[], name: string, rootDir?: string) => {
+    (importedNodes: Node<BaseNodeData>[], importedEdges: Edge[], name: string, _rootDir?: string) => {
       updateNodeIdCounter(importedNodes);
       setNodes(importedNodes);
       setEdges(importedEdges);
       setWorkflowName(name);
-      setRootDirectory(rootDir || '');
+      // Always fetch project root from server on import
+      // This ensures we use the discovered root, not any stale/relative value
+      getConfig()
+        .then((config) => setRootDirectory(config.projectRoot))
+        .catch(() => {});
       setSelectedNode(null);
       // Fit view after import with a small delay to let React render
       setTimeout(() => fitView({ padding: 0.2 }), 50);
@@ -285,12 +305,10 @@ function Flow() {
         nodes={nodes}
         edges={edges}
         workflowName={workflowName}
-        rootDirectory={rootDirectory}
         isExecuting={isExecuting}
         onImport={onImport}
         onNewWorkflow={onNewWorkflow}
         onWorkflowNameChange={setWorkflowName}
-        onRootDirectoryChange={setRootDirectory}
         onExecute={onExecute}
         onResetExecution={onResetExecution}
       />

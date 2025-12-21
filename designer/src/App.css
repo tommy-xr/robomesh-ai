@@ -172,6 +172,10 @@
   background: var(--node-trigger);
   box-shadow: 0 0 8px var(--node-trigger);
 }
+.palette-icon.script {
+  background: var(--node-script);
+  box-shadow: 0 0 8px var(--node-script);
+}
 .palette-icon.workdir {
   background: var(--node-workdir);
   box-shadow: 0 0 8px var(--node-workdir);
@@ -300,6 +304,71 @@
   line-height: 1.5;
   min-height: 120px;
   tab-size: 2;
+}
+
+/* Script file input with browse button */
+.file-input-group {
+  display: flex;
+  gap: 6px;
+}
+
+.file-input-group input {
+  flex: 1;
+}
+
+.file-input-group .browse-btn {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.file-input-group .browse-btn:hover:not(:disabled) {
+  border-color: var(--node-script);
+  color: var(--node-script);
+}
+
+.file-input-group .browse-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-type-hint {
+  font-size: 0.7rem;
+  color: var(--node-script);
+  margin-top: 4px;
+  font-family: ui-monospace, monospace;
+}
+
+.script-info .file-type-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.script-info .file-type-list li {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.script-info .file-type-list li:last-child {
+  border-bottom: none;
+}
+
+.script-info .file-type-list code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  color: var(--node-script);
+  margin-right: 6px;
 }
 
 /* Execution Output in Config Panel */
