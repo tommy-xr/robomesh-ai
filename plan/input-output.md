@@ -554,3 +554,38 @@ function upgradeWorkflow(workflow: WorkflowSchema): WorkflowSchema {
 - Target handle defaults to `input:input` (not `input:context`) - a generic input all non-trigger nodes will have
 - Trigger nodes get no input ports (they only produce outputs)
 - All nodes get a default `input` input port of type `any` to accept any legacy connection
+
+---
+
+## Project Structure (Updated)
+
+The project has been restructured into a clean monorepo with separate workspaces:
+
+```
+src/
+├── core/       @shodan/core     - Shared types and utilities
+├── server/     @shodan/server   - Backend execution engine
+├── designer/   @shodan/designer - React-based visual workflow designer
+└── cli/        @shodan/cli      - Command-line interface
+```
+
+### Workspace Dependencies
+
+- `@shodan/core` - No dependencies (base layer)
+  - Exports: I/O types, shared interfaces
+
+- `@shodan/server` - Depends on: `@shodan/core`
+  - Exports: Workflow executor, node runners, utilities
+
+- `@shodan/designer` - Depends on: `@shodan/core`
+  - Exports: React components, visual editor
+
+- `@shodan/cli` - Depends on: `@shodan/core`, `@shodan/server`
+  - Exports: CLI commands for running workflows
+
+### Key Files for I/O System
+
+- `src/core/src/io-types.ts` - Core I/O type definitions (PortDefinition, ValueType, etc.)
+- `src/designer/src/nodes/BaseNode.tsx` - Node UI component with I/O fields
+- `src/designer/src/lib/workflow.ts` - Serialization and migration logic
+- `src/server/src/engine/executor.ts` - Workflow execution engine (to be updated in Phase 2)
