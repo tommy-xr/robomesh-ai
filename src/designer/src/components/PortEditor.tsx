@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PortDefinition, ValueType } from '@shodan/core';
+import { JSONSchemaEditor } from './JSONSchemaEditor';
 
 interface PortEditorProps {
   ports: PortDefinition[];
@@ -185,6 +186,12 @@ export function PortEditor({ ports, direction, onChange }: PortEditorProps) {
                       rows={2}
                     />
                   </div>
+                  {port.type === 'json' && (
+                    <JSONSchemaEditor
+                      schema={port.schema}
+                      onChange={(schema) => updatePort(index, { schema })}
+                    />
+                  )}
                 </div>
               )}
             </div>

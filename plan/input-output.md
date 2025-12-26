@@ -527,11 +527,21 @@ When a workflow is used as a component in another workflow:
 - `src/designer/src/nodes/nodes.css` - Port container and label styling
 - `src/designer/src/App.tsx` - Connection validation logic
 
-### Phase 4: UI - Configuration
-- [ ] Input/output port editor (add/remove/reorder)
-- [ ] Type selector dropdown
+### Phase 4: UI - Configuration (In Progress)
+- [x] Input/output port editor (add/remove/reorder)
+- [x] Type selector dropdown
 - [ ] Extraction pattern builder for shell outputs
-- [ ] JSON schema editor for `json` type
+- [x] JSON schema editor for `json` type
+
+**Implementation Details:**
+- **PortEditor component:** Collapsible port items with name, label, type, required, default, description fields
+- **JSONSchemaEditor component:** Visual property editor with name, type, required, description per property
+  - Toggle between Visual and Raw JSON modes
+  - Supports types: string, number, integer, boolean, object, array
+  - Bidirectional sync between visual editor and raw JSON
+
+**Known Issues:**
+- JSON schema property row overflows the config panel in visual mode (inputs too wide)
 
 ### Phase 5: Agent Node I/O
 - [ ] Agent node: input ports for context injection
