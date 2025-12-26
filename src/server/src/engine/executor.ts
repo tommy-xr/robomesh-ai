@@ -52,6 +52,8 @@ export interface WorkflowSchema {
     id: string;
     source: string;
     target: string;
+    sourceHandle?: string;  // Format: "output:outputName"
+    targetHandle?: string;  // Format: "input:inputName"
   }>;
 }
 
@@ -243,11 +245,35 @@ function extractOutput(
  * Replace template variables in a string
  * Supports both legacy {{ node.output }} and new {{ node.outputName }} syntax
  */
-function replaceTemplates(text: string, context: ExecutionContext): string {
-  // Match both {{ node.output }} and {{ node.outputName }}
+function replaceTemplates(
+  text: string,
+  context: ExecutionContext,
+  inputValues?: Record<string, unknown>
+): string {
+  let result = text;
+
+  // First, handle {{ input }} for single input (common case)
+  if (inputValues && 'input' in inputValues) {
+    const singleInputRegex = /\{\{\s*input\s*\}\}/g;
+    result = result.replace(singleInputRegex, () => {
+      const value = inputValues['input'];
+      return typeof value === 'string' ? value : JSON.stringify(value);
+    });
+  }
+
+  // Then handle {{ inputs.portName }} for named inputs
   const templateRegex = /\{\{\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\s*\}\}/g;
 
-  return text.replace(templateRegex, (match, identifier, outputName) => {
+  return result.replace(templateRegex, (match, identifier, property) => {
+    // Check if referencing current node's inputs
+    if (identifier === 'inputs' && inputValues) {
+      if (property in inputValues) {
+        const value = inputValues[property];
+        return typeof value === 'string' ? value : JSON.stringify(value);
+      }
+      return match; // Input not found, leave template unchanged
+    }
+
     // Try to find node by ID or label
     let nodeId: string | undefined;
 
@@ -274,17 +300,17 @@ function replaceTemplates(text: string, context: ExecutionContext): string {
     }
 
     // Resolution rules:
-    // 1. If outputName is 'output' and node has an 'output' field, use it
+    // 1. If property is 'output' and node has an 'output' field, use it
     // 2. Otherwise look up the specific output by name
-    // 3. If not found and outputName is 'output', use first defined output (legacy compat)
+    // 3. If not found and property is 'output', use first defined output (legacy compat)
 
-    if (outputName in nodeOutputs) {
-      const value = nodeOutputs[outputName];
+    if (property in nodeOutputs) {
+      const value = nodeOutputs[property];
       return typeof value === 'string' ? value : JSON.stringify(value);
     }
 
     // Legacy compatibility: {{ node.output }} falls back to first output
-    if (outputName === 'output') {
+    if (property === 'output') {
       const firstOutput = Object.values(nodeOutputs)[0];
       if (firstOutput !== undefined) {
         return typeof firstOutput === 'string' ? firstOutput : JSON.stringify(firstOutput);
@@ -298,33 +324,37 @@ function replaceTemplates(text: string, context: ExecutionContext): string {
 /**
  * Process node data, replacing template variables
  */
-function processNodeTemplates(node: WorkflowNode, context: ExecutionContext): WorkflowNode {
+function processNodeTemplates(
+  node: WorkflowNode,
+  context: ExecutionContext,
+  inputValues?: Record<string, unknown>
+): WorkflowNode {
   const processedData = { ...node.data };
 
   if (processedData.script && typeof processedData.script === 'string') {
-    processedData.script = replaceTemplates(processedData.script, context);
+    processedData.script = replaceTemplates(processedData.script, context, inputValues);
   }
 
   if (processedData.commands && Array.isArray(processedData.commands)) {
     processedData.commands = processedData.commands.map(cmd =>
-      typeof cmd === 'string' ? replaceTemplates(cmd, context) : cmd
+      typeof cmd === 'string' ? replaceTemplates(cmd, context, inputValues) : cmd
     );
   }
 
   if (processedData.prompt && typeof processedData.prompt === 'string') {
-    processedData.prompt = replaceTemplates(processedData.prompt, context);
+    processedData.prompt = replaceTemplates(processedData.prompt, context, inputValues);
   }
 
   if (processedData.path && typeof processedData.path === 'string') {
-    processedData.path = replaceTemplates(processedData.path, context);
+    processedData.path = replaceTemplates(processedData.path, context, inputValues);
   }
 
   if (processedData.scriptFile && typeof processedData.scriptFile === 'string') {
-    processedData.scriptFile = replaceTemplates(processedData.scriptFile, context);
+    processedData.scriptFile = replaceTemplates(processedData.scriptFile, context, inputValues);
   }
 
   if (processedData.scriptArgs && typeof processedData.scriptArgs === 'string') {
-    processedData.scriptArgs = replaceTemplates(processedData.scriptArgs, context);
+    processedData.scriptArgs = replaceTemplates(processedData.scriptArgs, context, inputValues);
   }
 
   return { ...node, data: processedData };
@@ -801,7 +831,39 @@ export async function executeWorkflow(
 
     // Ensure node has I/O definitions before processing
     const nodeWithIO = ensureNodeIO(node);
-    const processedNode = processNodeTemplates(nodeWithIO, context);
+
+    // Resolve inputs from connected edges
+    const { success: inputsResolved, inputValues, error: inputError } = resolveInputs(
+      nodeId,
+      nodeWithIO,
+      edges,
+      context
+    );
+
+    if (!inputsResolved) {
+      // Input resolution failed
+      const result: NodeResult = {
+        nodeId,
+        status: 'failed',
+        error: inputError || 'Failed to resolve inputs',
+        startTime: new Date().toISOString(),
+        endTime: new Date().toISOString(),
+      };
+      results.push(result);
+
+      if (onNodeComplete) {
+        onNodeComplete(nodeId, result);
+      }
+
+      if (!nodeWithIO.data.continueOnFailure) {
+        overallSuccess = false;
+      }
+
+      continue;
+    }
+
+    // Process templates with resolved input values
+    const processedNode = processNodeTemplates(nodeWithIO, context, inputValues);
     const result = await executeNode(processedNode, rootDirectory || process.cwd(), edges, context);
     results.push(result);
 

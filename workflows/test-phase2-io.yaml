@@ -30,8 +30,7 @@ nodes:
       label: Use trigger text
       nodeType: shell
       script: |
-        echo "Received from trigger: {{ trigger-1.text }}"
-        echo "Timestamp: {{ trigger-1.timestamp }}"
+        echo "Received from trigger: {{ input }}"
 
   - id: shell-3
     type: shell
@@ -41,16 +40,17 @@ nodes:
       nodeType: shell
       script: |
         echo "Previous stdout was:"
-        echo "{{ shell-1.stdout }}"
+        echo "{{ input }}"
 
   - id: shell-4
     type: shell
     position: { x: 900, y: 100 }
     data:
-      label: Check exit codes
+      label: Final output
       nodeType: shell
       script: |
-        echo "Shell 1 exit code: {{ shell-1.exitCode }}"
+        echo "Received from previous shell:"
+        echo "{{ input }}"
         echo "All tests passed!"
 
 edges:
@@ -63,7 +63,7 @@ edges:
   - id: e2
     source: trigger-1
     target: shell-2
-    sourceHandle: output:timestamp
+    sourceHandle: output:text
     targetHandle: input:input
 
   - id: e3

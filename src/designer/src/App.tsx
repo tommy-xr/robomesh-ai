@@ -262,6 +262,8 @@ function Flow() {
           id: e.id,
           source: e.source,
           target: e.target,
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
         })),
         rootDirectory: rootDirectory || undefined,
       };
