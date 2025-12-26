@@ -2,6 +2,12 @@
 
 This document outlines the design for a unified input/output system for Shodan workflow nodes.
 
+**Status:** Phase 1 (Core Data Model) completed ✅
+**Project Structure:** Restructured to monorepo with `src/core`, `src/server`, `src/designer`, `src/cli`
+**Schema Version:** v2 (with v1→v2 migration)
+
+---
+
 ## Current State
 
 Currently, data flows between nodes via:
@@ -444,12 +450,22 @@ When a workflow is used as a component in another workflow:
 
 ## Implementation Phases
 
-### Phase 1: Core Data Model
-- [ ] Add `inputs`/`outputs` to BaseNodeData type
-- [ ] Add `extract` field to PortDefinition
-- [ ] Create NodeRuntimeState for execution-time values (separate from persisted data)
-- [ ] Update edge serialization for handle names
-- [ ] Schema migration for existing workflows (v1 → v2)
+### Phase 1: Core Data Model ✅ COMPLETED
+- [x] Add `inputs`/`outputs` to BaseNodeData type
+- [x] Add `extract` field to PortDefinition
+- [x] Create NodeRuntimeState for execution-time values (separate from persisted data)
+- [x] Update edge serialization for handle names
+- [x] Schema migration for existing workflows (v1 → v2)
+- [x] **BONUS:** Restructured project to monorepo with `src/core`, `src/server`, `src/designer`, `src/cli`
+
+**Implementation Notes:**
+- Created `@shodan/core` workspace with shared types in `src/core/src/io-types.ts`
+- Updated `BaseNodeData` in `src/designer/src/nodes/BaseNode.tsx` with I/O fields
+- Bumped `WORKFLOW_SCHEMA_VERSION` from 1 to 2
+- Implemented migration in `src/designer/src/lib/workflow.ts:upgradeWorkflow()`
+- All existing workflows will auto-migrate on load
+- Default ports: all nodes get `output` (string), non-triggers get `input` (any)
+- Default edge handles: `output:output` and `input:input`
 
 ### Phase 2: Trigger/Shell/Script I/O (testable without agents)
 - [ ] Trigger node: outputs for manual trigger (`text`, `params`, `timestamp`)

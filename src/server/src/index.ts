@@ -9,6 +9,10 @@ import { getProjectRoot, getProjectRootMarker } from './utils/project-root.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Re-export for CLI and other consumers
+export { executeWorkflowSchema, type WorkflowSchema, type NodeResult } from './engine/executor.js';
+export { getProjectRoot } from './utils/project-root.js';
+
 export interface ServerConfig {
   port: number;
   designerPath?: string; // Path to designer dist folder

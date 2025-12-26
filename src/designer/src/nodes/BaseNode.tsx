@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
+import type { PortDefinition } from '@shodan/core';
 import './nodes.css';
 
 export type NodeType = 'agent' | 'shell' | 'script' | 'trigger' | 'workdir';
@@ -8,6 +9,9 @@ export type ExecutionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'fa
 export interface BaseNodeData extends Record<string, unknown> {
   label: string;
   nodeType: NodeType;
+  // I/O definition (persisted)
+  inputs?: PortDefinition[];
+  outputs?: PortDefinition[];
   // Agent fields
   runner?: string;
   model?: string;

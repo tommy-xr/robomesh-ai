@@ -3,7 +3,7 @@ import yaml from 'js-yaml';
 import type { BaseNodeData } from '../nodes';
 
 // Schema version - increment when making breaking changes
-export const WORKFLOW_SCHEMA_VERSION = 1;
+export const WORKFLOW_SCHEMA_VERSION = 2;
 
 export interface WorkflowMetadata {
   name: string;
@@ -41,15 +41,40 @@ export interface SerializedEdge {
 function upgradeWorkflow(workflow: WorkflowSchema): WorkflowSchema {
   let current = workflow;
 
-  // Example upgrade path - add cases as schema evolves
-  // if (current.version === 1) {
-  //   // Migrate from v1 to v2
-  //   current = {
-  //     ...current,
-  //     version: 2,
-  //     // ... apply migrations
-  //   };
-  // }
+  // Migrate from v1 to v2: Add default I/O ports to all nodes
+  if (current.version === 1) {
+    current = {
+      ...current,
+      version: 2,
+      nodes: current.nodes.map((node) => {
+        const nodeType = (node.data.nodeType as string) || node.type;
+
+        // All nodes get a default 'output' output port
+        const outputs = [{ name: 'output', type: 'string' as const }];
+
+        // Non-trigger nodes get a default 'input' input port
+        const inputs =
+          nodeType === 'trigger'
+            ? []
+            : [{ name: 'input', type: 'any' as const }];
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            inputs,
+            outputs,
+          },
+        };
+      }),
+      edges: current.edges.map((edge) => ({
+        ...edge,
+        // Source always uses 'output' handle, target uses 'input' handle
+        sourceHandle: edge.sourceHandle || 'output:output',
+        targetHandle: edge.targetHandle || 'input:input',
+      })),
+    };
+  }
 
   if (current.version > WORKFLOW_SCHEMA_VERSION) {
     throw new Error(

@@ -16,6 +16,7 @@
     "test:workflows": "tsx --test src/test-workflows.ts"
   },
   "dependencies": {
+    "@shodan/core": "workspace:*",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "glob": "^11.0.0",
