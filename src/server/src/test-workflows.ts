@@ -199,6 +199,32 @@ describe('Phase 2: I/O System', () => {
     const shouldNotRun = result.results.find(r => r.nodeId === 'shell-should-not-run');
     assert.strictEqual(shouldNotRun, undefined, 'Third node should not have executed');
   });
+
+  test('test-input-resolution-stops-workflow.yaml - workflow stops when input resolution fails', async () => {
+    const schema = await loadWorkflow('test-input-resolution-stops-workflow.yaml');
+    const result = await executeWorkflowSchema(schema);
+
+    assert.strictEqual(result.success, false, 'Workflow should fail');
+
+    // Verify first shell node ran successfully
+    const successNode = result.results.find(r => r.nodeId === 'shell-success');
+    assert.ok(successNode, 'Should have shell-success result');
+    assert.strictEqual(successNode.status, 'completed', 'First node should succeed');
+
+    // Verify the node with missing required input failed
+    const missingInputNode = result.results.find(r => r.nodeId === 'shell-missing-input');
+    assert.ok(missingInputNode, 'Should have shell-missing-input result');
+    assert.strictEqual(missingInputNode.status, 'failed', 'Node with missing input should fail');
+    assert.ok(
+      missingInputNode.error?.includes('required_data'),
+      `Error should mention missing required input, got: ${missingInputNode.error}`
+    );
+
+    // Verify sibling node did NOT run (workflow should have stopped on input resolution failure)
+    // This is the key assertion - sibling was already queued but should not execute
+    const siblingNode = result.results.find(r => r.nodeId === 'shell-sibling');
+    assert.strictEqual(siblingNode, undefined, 'Sibling node should not have executed after input resolution failure');
+  });
 });
 
 describe('Workflow Validation', () => {

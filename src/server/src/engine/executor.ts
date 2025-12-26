@@ -1016,10 +1016,13 @@ export async function executeWorkflow(
         onNodeComplete(nodeId, result);
       }
 
-      if (!nodeWithIO.data.continueOnFailure) {
+      const continueOnFailure = nodeWithIO.data.continueOnFailure === true;
+      if (!continueOnFailure) {
         overallSuccess = false;
+        break; // Stop workflow on input resolution failure (same as execution failure)
       }
-
+      // Node failed but continueOnFailure is true - keep going but mark overall as failed
+      overallSuccess = false;
       continue;
     }
 
