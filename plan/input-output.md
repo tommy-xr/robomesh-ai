@@ -544,9 +544,149 @@ When a workflow is used as a component in another workflow:
 - JSON schema property row overflows the config panel in visual mode (inputs too wide)
 
 ### Phase 5: Agent Node I/O
-- [ ] Agent node: input ports for context injection
-- [ ] Agent node: structured outputs from outputSchema
-- [ ] Output extraction from agent response
+
+#### Problem: Structured Output from Different Agent Types
+
+We have two categories of agent runners:
+
+**1. Direct API Agents (OpenAI)**
+- Can use native structured output features (`response_format` with JSON schema)
+- Reliable, built-in validation
+- No extra processing needed
+
+**2. CLI-Based Agents (Claude Code, Codex, Gemini CLI)**
+- Output free-form text to stdout
+- No built-in structured output mode
+- Need post-processing to extract structured data
+
+#### Proposed Solution: Two-Phase Extraction
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Agent Execution Flow                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐                                           │
+│  │ Agent Node   │                                           │
+│  │ (has schema) │                                           │
+│  └──────┬───────┘                                           │
+│         │                                                    │
+│         ▼                                                    │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Runner Type?                                          │   │
+│  └──────────────────────────────────────────────────────┘   │
+│         │                                                    │
+│    ┌────┴────┐                                              │
+│    ▼         ▼                                              │
+│ ┌──────┐  ┌──────────┐                                      │
+│ │OpenAI│  │CLI Agents│                                      │
+│ │ API  │  │          │                                      │
+│ └──┬───┘  └────┬─────┘                                      │
+│    │           │                                            │
+│    ▼           ▼                                            │
+│ ┌────────┐  ┌────────────────┐                              │
+│ │Native  │  │Raw text output │                              │
+│ │JSON    │  └───────┬────────┘                              │
+│ │Schema  │          │                                        │
+│ └───┬────┘          ▼                                        │
+│     │      ┌─────────────────┐                              │
+│     │      │ Extraction LLM  │ ◄── OpenAI API call          │
+│     │      │ (post-process)  │     with JSON schema         │
+│     │      └────────┬────────┘                              │
+│     │               │                                        │
+│     ▼               ▼                                        │
+│  ┌──────────────────────────────────────┐                   │
+│  │ Outputs:                              │                   │
+│  │  • response (string) - raw output     │                   │
+│  │  • structured (json) - parsed schema  │                   │
+│  │  • exitCode (number)                  │                   │
+│  └──────────────────────────────────────┘                   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Extraction LLM Options
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **OpenAI Structured Output** | Very reliable, enforced schema | Requires OpenAI API key, cost |
+| **Claude API Tool Use** | Good reliability, Anthropic ecosystem | Different API, cost |
+| **Local LLM** | No API cost, privacy | Setup complexity, less reliable |
+| **Regex/Parsing** | Fast, no API cost | Brittle, fails on edge cases |
+
+**Recommendation:** Use OpenAI API for extraction (configurable). Reasons:
+- Most reliable structured output in the industry
+- Works regardless of which CLI agent produced the output
+- Can be made configurable for users who prefer alternatives
+- Cost is minimal (small extraction call, not full generation)
+
+#### Configuration
+
+Add extraction settings to agent node or global config:
+
+```yaml
+# In agent node data (optional override)
+extractionMethod: 'openai'  # 'openai' | 'claude' | 'regex' | 'none'
+extractionModel: 'gpt-4o-mini'  # Cost-effective for extraction
+
+# Or global default in workflow metadata
+metadata:
+  extraction:
+    method: 'openai'
+    model: 'gpt-4o-mini'
+```
+
+#### Implementation Tasks
+
+**Phase 5a: Input Ports for Agents** ✅
+- [x] Add input port handling to agent runners
+- [x] Inject input values into prompt templates (`{{ inputs.portName }}`)
+- [x] Pass input values as context to agents
+
+**Phase 5b: Structured Output - OpenAI Direct** ✅
+- [x] When OpenAI runner has `outputSchema`, use `response_format: { type: "json_schema", ... }`
+- [x] Parse response and populate `structured` output port
+- [x] Handle validation errors gracefully
+
+**Phase 5c: Structured Output - CLI Extraction** ✅
+- [x] Create `extractStructuredOutput()` utility function
+- [x] Implement OpenAI extraction: send raw output + schema, get structured response
+- [x] Add extraction step to CLI runners when `outputSchema` is defined
+- [ ] Make extraction method configurable (deferred - using OpenAI by default)
+
+**Phase 5d: Testing** ✅
+- [x] Test workflow with OpenAI structured output (`test-structured-output.yaml`)
+- [ ] Test workflow with Claude Code + extraction (requires Claude CLI)
+- [x] Test with various schema types (objects, arrays)
+- [x] Test extraction failure handling (graceful fallback)
+
+**Key Files:**
+- `src/server/src/engine/agents/openai.ts` - Native structured output via `response_format`
+- `src/server/src/engine/agents/extraction.ts` - Extraction utility for CLI agents
+- `src/server/src/engine/agents/claude-code.ts` - Claude Code with extraction
+- `src/server/src/engine/agents/codex.ts` - Codex with extraction
+- `src/server/src/engine/agents/gemini-cli.ts` - Gemini CLI with extraction
+- `src/server/src/engine/executor.ts` - Updated NodeResult and buildOutputValues
+
+#### Alternative Considered: Prompting CLI Agents
+
+We could try prompting CLI agents to output JSON directly:
+```
+Please respond with valid JSON matching this schema: {...}
+```
+
+**Why we're not doing this:**
+- Inconsistent across models (some follow instructions better than others)
+- CLI agents may add commentary around the JSON
+- No validation/enforcement at the model level
+- Extraction approach works for ALL agents uniformly
+
+#### Edge Cases
+
+1. **No schema defined**: Skip extraction, only `response` output is populated
+2. **Extraction fails**: Set `structured` to null, log warning, don't fail workflow
+3. **Partial match**: Best-effort extraction, missing fields are null
+4. **Large outputs**: May need to truncate before sending to extraction LLM
 
 ### Phase 6: Components
 - [ ] Interface definition schema in workflow files

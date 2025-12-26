@@ -64,6 +64,7 @@ export interface NodeResult {
   rawOutput?: string; // Clean output without command prefixes, used for templating
   stdout?: string;    // Standard output (for shell/script nodes)
   stderr?: string;    // Standard error (for shell/script nodes)
+  structuredOutput?: unknown; // Parsed JSON for agent nodes with outputSchema
   error?: string;
   exitCode?: number;
   startTime?: string;
@@ -488,6 +489,7 @@ function buildOutputValues(
     stdout?: string;
     stderr?: string;
     exitCode?: number;
+    structuredOutput?: unknown;  // Parsed JSON for agent nodes
   },
   context: ExecutionContext
 ): Record<string, unknown> {
@@ -500,6 +502,10 @@ function buildOutputValues(
     // Legacy mode: single 'output' field
     if (result.rawOutput !== undefined) {
       outputs.output = result.rawOutput;
+    }
+    // For agents with structured output but no defined outputs, add it as 'structured'
+    if (nodeType === 'agent' && result.structuredOutput !== undefined) {
+      outputs.structured = result.structuredOutput;
     }
     return outputs;
   }
@@ -536,6 +542,30 @@ function buildOutputValues(
       } else {
         // Pass through from trigger inputs
         outputs[outputDef.name] = triggerInputs[outputDef.name];
+      }
+    } else if (nodeType === 'agent') {
+      // Agent nodes have response (raw), structured (parsed JSON), and exitCode
+      if (outputDef.name === 'response') {
+        outputs.response = result.rawOutput || '';
+      } else if (outputDef.name === 'structured') {
+        outputs.structured = result.structuredOutput;
+      } else if (outputDef.name === 'exitCode') {
+        outputs.exitCode = result.exitCode ?? 0;
+      } else {
+        // Custom output - try to extract from structured output first, then raw
+        if (result.structuredOutput && typeof result.structuredOutput === 'object') {
+          const structured = result.structuredOutput as Record<string, unknown>;
+          if (outputDef.name in structured) {
+            outputs[outputDef.name] = structured[outputDef.name];
+          } else {
+            // Fall back to extraction from raw output
+            sourceData = result.rawOutput || '';
+            outputs[outputDef.name] = extractOutput(sourceData, outputDef.extract);
+          }
+        } else {
+          sourceData = result.rawOutput || '';
+          outputs[outputDef.name] = extractOutput(sourceData, outputDef.extract);
+        }
       }
     } else {
       // Other node types - use rawOutput
@@ -753,6 +783,7 @@ async function executeNode(
       promptFiles,
       outputSchema,
       cwd,
+      inputValues,  // Pass input values for template injection
     });
 
     return {
@@ -760,6 +791,7 @@ async function executeNode(
       status: result.success ? 'completed' : 'failed',
       output: result.output,
       rawOutput: result.output,
+      structuredOutput: result.structuredOutput,  // Parsed JSON if schema was provided
       error: result.error,
       startTime,
       endTime: new Date().toISOString(),
