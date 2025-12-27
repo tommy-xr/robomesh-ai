@@ -2,6 +2,21 @@
 
 This document outlines the design for a Loop node that enables iterative workflows with feedback loops.
 
+**Prerequisites**: Phases 1-5 of the I/O system must be complete (see `plan/completed/input-output.md`).
+
+## Design Decisions
+
+Key decisions made for consistency and simplicity:
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Continue condition | `interface-continue` node with boolean input | Consistent with component pattern; visual; logic is explicit in graph |
+| Loop interior | Visible (container), not abstracted | Unlike components; use component inside loop if abstraction needed |
+| Previous iteration access | `interface-input` exposes `prev.*` outputs | Auto-generated from `interface-output` inputs; null on first iteration |
+| Built-in outputs | `iteration` on `interface-input` | Available as wirable output, not magic variable |
+| `workflowRef` when using inline | Omit field entirely | Cleaner than `null`; TypeScript optional field handles this |
+| Type coercion | Not supported (strict matching) | Per I/O system design; types must match exactly |
+
 ## Motivation
 
 Some workflows require iteration until a condition is met:
@@ -15,55 +30,108 @@ A pure DAG cannot express these patterns. We need a loop primitive.
 
 ## Design
 
-The Loop node is a special container that:
-1. Contains an inner workflow (like a component)
-2. Executes the inner workflow repeatedly
-3. Passes outputs from one iteration as inputs to the next
-4. Terminates when a condition becomes false (or max iterations reached)
+The Loop node uses the same **interface node pattern** as components, but with key differences:
+
+| Aspect | Component | Loop |
+|--------|-----------|------|
+| Inner workflow | Hidden (abstracted) | Visible (container/frame) |
+| Drill-down needed | Yes, to see internals | No, always visible |
+| Abstraction | Yes, shows as single node | No, shows inner workflow |
+| If you want to abstract loop contents | N/A | Put a component inside the loop |
+
+**Interface nodes (inside the loop's inner workflow):**
+
+| Node Type | Purpose | Ports |
+|-----------|---------|-------|
+| `interface-input` | Receives outer inputs | Outputs: each outer input + `iteration` (number) + `prev.*` (previous iteration outputs) |
+| `interface-output` | Sends outputs to loop's outer ports | Inputs: values to expose as loop outputs |
+| `interface-continue` | Controls iteration | Input: `continue` (boolean) - `true` = run another iteration |
+
+**Execution flow:**
+
+1. Loop receives inputs via edges (like a component)
+2. Inner workflow executes with `interface-input` providing values
+3. After inner workflow completes, check `interface-continue.continue`:
+   - `true` → run another iteration (interface-input gets `prev.*` from this iteration's interface-output)
+   - `false` → stop, apply interface-output values to loop's output ports
+4. Safety: `maxIterations` on loop node prevents infinite loops
 
 ### Visual Representation
 
 ```
-┌──────────────────────────────────────────────────┐
-│ 🔁 Loop: Code Review                             │
-│                                                  │
-│  ○ task              approved ●                  │
-│  ○ guidelines        final_code ●                │
-│                      iterations ●                │
-│  ┌────────────────────────────────────────────┐  │
-│  │                                            │  │
-│  │  ┌──────────┐        ┌──────────┐         │  │
-│  │  │ 🤖 Coder │───────▶│ 🤖 Review│         │  │
-│  │  └──────────┘        └──────────┘         │  │
-│  │                                            │  │
-│  └────────────────────────────────────────────┘  │
-│                                                  │
-│  continue while: review.approved == false        │
-│  max iterations: 5                               │
-└──────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🔁 Loop: Code Review                                                    │
+│                                                                         │
+│  ○ task              approved ●                                         │
+│  ○ guidelines        final_code ●                                       │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ Inner Workflow                                                  │    │
+│  │                                                                 │    │
+│  │ ┌─────────────┐      ┌──────────┐      ┌──────────┐            │    │
+│  │ │ ⊕ Input     │      │ 🤖 Coder │      │ 🤖 Review│            │    │
+│  │ │             │      │          │      │          │            │    │
+│  │ │   task ●────┼─────▶│          │      │          │            │    │
+│  │ │   guidelines●─────▶│          │─────▶│          │            │    │
+│  │ │   iteration ●      │          │      │          │            │    │
+│  │ │   prev.* ●─────────│──────────│─────▶│          │            │    │
+│  │ └─────────────┘      └──────────┘      └────┬─────┘            │    │
+│  │                                             │                   │    │
+│  │                     ┌───────────────────────┼───────────────┐   │    │
+│  │                     │                       │               │   │    │
+│  │                     ▼                       ▼               │   │    │
+│  │              ┌─────────────┐         ┌─────────────┐        │   │    │
+│  │              │ ⊕ Output    │         │ ⊕ Continue  │        │   │    │
+│  │              │             │         │             │        │   │    │
+│  │              │ ○ approved  │         │ ○ continue  │◀── NOT(approved)
+│  │              │ ○ final_code│         └─────────────┘        │   │    │
+│  │              └─────────────┘                                │   │    │
+│  │                                                             │   │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                                                                         │
+│  max iterations: 5                                                      │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
 
 ```
 Iteration 1:
-  outer.task ──────────────▶ coder.task
-  outer.guidelines ─────────▶ coder.guidelines
-  coder.code ───────────────▶ review.code
-  review.approved ──────────▶ [check: false, continue]
-  review.feedback ──────────▶ [store for next iteration]
+  interface-input provides:
+    task ← from outer edge
+    guidelines ← from outer edge
+    iteration = 1
+    prev.approved = null (no previous iteration)
+    prev.feedback = null
+
+  [inner workflow executes: coder → review]
+
+  interface-output receives:
+    approved ← review.approved (false)
+    final_code ← coder.code
+
+  interface-continue receives:
+    continue ← NOT(review.approved) = true → CONTINUE
 
 Iteration 2:
-  outer.task ──────────────▶ coder.task
-  outer.guidelines ─────────▶ coder.guidelines
-  review.feedback (prev) ───▶ coder.feedback    ← feedback loop
-  coder.code ───────────────▶ review.code
-  review.approved ──────────▶ [check: true, stop]
+  interface-input provides:
+    task ← from outer edge
+    guidelines ← from outer edge
+    iteration = 2
+    prev.approved = false (from iteration 1)
+    prev.feedback = "needs error handling" (from iteration 1)
+
+  [inner workflow executes: coder uses prev.feedback → review]
+
+  interface-output receives:
+    approved ← review.approved (true)
+    final_code ← coder.code
+
+  interface-continue receives:
+    continue ← NOT(review.approved) = false → STOP
 
 Final:
-  review.approved ──────────▶ outer.approved
-  coder.code ───────────────▶ outer.final_code
-  iteration_count ──────────▶ outer.iterations
+  Loop outputs ← interface-output values from last iteration
 ```
 
 ---
@@ -74,51 +142,44 @@ Final:
 interface LoopNodeData extends BaseNodeData {
   nodeType: 'loop';
 
-  // Inner workflow - either reference or inline
-  workflowRef?: string;           // Path to workflow file
+  // Inner workflow - either reference or inline (exactly one must be provided)
+  workflowRef?: string;            // Path to workflow file
   inlineWorkflow?: WorkflowSchema; // Or embedded workflow
 
-  // Continuation condition
-  continueWhile: {
-    output: string;      // Which inner output to check
-    operator: '==' | '!=' | '<' | '>' | '<=' | '>=';
-    value: unknown;      // Value to compare against
-  };
-
-  // Safety limits
+  // Safety limit to prevent infinite loops
   maxIterations: number;  // Default: 10
-
-  // Input mappings: how outer inputs feed into inner workflow
-  // On first iteration: outer input → inner input
-  // On subsequent iterations: can also use previous iteration outputs
-  inputMappings: InputMapping[];
-
-  // Output mappings: which inner outputs become loop outputs
-  outputMappings: OutputMapping[];
 }
 
-interface InputMapping {
-  // Source: either an outer input or a previous iteration output
-  source:
-    | { type: 'outer'; name: string }
-    | { type: 'previous'; node: string; output: string };
+// The inner workflow MUST contain these interface nodes:
+// - Exactly one interface-input node (provides outer inputs + iteration + prev.*)
+// - Exactly one interface-output node (defines loop's output ports)
+// - Exactly one interface-continue node (controls iteration)
+```
 
-  // Target: inner workflow input
-  target: { node: string; input: string };
+### Interface Node Types
 
-  // When to use this mapping
-  iterations: 'first' | 'subsequent' | 'all';
+```typescript
+// Same as component - receives values from outer edges
+interface InterfaceInputNodeData extends BaseNodeData {
+  nodeType: 'interface-input';
+  // Outputs are derived from loop's input ports + built-ins
+  // Built-in outputs (auto-added):
+  //   - iteration: number (1-based)
+  //   - prev.*: previous iteration's interface-output values (null on first iteration)
 }
 
-interface OutputMapping {
-  // Source: inner workflow output
-  source: { node: string; output: string };
+// Same as component - sends values to outer edges
+interface InterfaceOutputNodeData extends BaseNodeData {
+  nodeType: 'interface-output';
+  // Inputs become the loop's output ports
+  // These values also become available as prev.* on next iteration
+}
 
-  // Target: loop node output
-  target: string;
-
-  // Which iteration's value to use
-  take: 'last' | 'first' | 'all';  // 'all' produces array
+// Loop-specific - controls whether to continue iterating
+interface InterfaceContinueNodeData extends BaseNodeData {
+  nodeType: 'interface-continue';
+  // Single input:
+  //   - continue: boolean (true = run another iteration, false = stop)
 }
 ```
 
@@ -127,113 +188,304 @@ interface OutputMapping {
 ## Example: Code Review Loop
 
 ```yaml
-- id: review-loop
-  type: loop
-  data:
-    label: Code Review Loop
-    nodeType: loop
-    workflowRef: null  # inline workflow below
+version: 2
+metadata:
+  name: Code Review Loop Example
+  description: Demonstrates a loop that iterates until code review is approved
 
-    continueWhile:
-      output: review.approved
-      operator: "=="
-      value: false
+nodes:
+  - id: review-loop
+    type: loop
+    data:
+      label: Code Review Loop
+      nodeType: loop
+      maxIterations: 5
 
-    maxIterations: 5
+      inputs:
+        - name: task
+          type: string
+          required: true
+        - name: guidelines
+          type: string
 
-    inputs:
-      - name: task
-        type: string
-        required: true
-      - name: guidelines
-        type: string
+      outputs:
+        - name: approved
+          type: boolean
+        - name: final_code
+          type: string
 
-    outputs:
-      - name: approved
-        type: boolean
-      - name: final_code
-        type: string
-      - name: iterations
-        type: number
+      inlineWorkflow:
+        nodes:
+          # Interface nodes
+          - id: input
+            type: interface-input
+            data:
+              nodeType: interface-input
+              label: Input
+              outputs:
+                - name: task
+                  type: string
+                - name: guidelines
+                  type: string
+                - name: iteration
+                  type: number
+                # prev.* outputs auto-generated from interface-output
 
-    inputMappings:
-      # First iteration: task comes from outer input
-      - source: { type: outer, name: task }
-        target: { node: coder, input: task }
-        iterations: all
+          - id: output
+            type: interface-output
+            data:
+              nodeType: interface-output
+              label: Output
+              inputs:
+                - name: approved
+                  type: boolean
+                - name: final_code
+                  type: string
+                - name: feedback
+                  type: string  # Available as prev.feedback on next iteration
 
-      # First iteration: no feedback yet
-      - source: { type: outer, name: guidelines }
-        target: { node: coder, input: context }
-        iterations: first
+          - id: continue
+            type: interface-continue
+            data:
+              nodeType: interface-continue
+              label: Continue?
+              inputs:
+                - name: continue
+                  type: boolean
 
-      # Subsequent iterations: include review feedback
-      - source: { type: previous, node: review, output: feedback }
-        target: { node: coder, input: context }
-        iterations: subsequent
+          # Logic nodes
+          - id: not-gate
+            type: shell
+            data:
+              nodeType: shell
+              label: NOT
+              script: |
+                if [ "{{ inputs.value }}" = "true" ]; then
+                  echo "false"
+                else
+                  echo "true"
+                fi
+              inputs:
+                - name: value
+                  type: boolean
+              outputs:
+                - name: result
+                  type: boolean
+                  extract:
+                    type: regex
+                    pattern: '(true|false)'
 
-    outputMappings:
-      - source: { node: review, output: approved }
-        target: approved
-        take: last
+          # Agent nodes
+          - id: coder
+            type: agent
+            data:
+              label: Coder
+              nodeType: agent
+              runner: openai
+              model: gpt-4o
+              prompt: |
+                Task: {{ inputs.task }}
 
-      - source: { node: coder, output: code }
-        target: final_code
-        take: last
+                {% if inputs.feedback %}
+                Previous feedback to address:
+                {{ inputs.feedback }}
+                {% else %}
+                Guidelines: {{ inputs.guidelines }}
+                {% endif %}
 
-      # Built-in: iteration count
-      - source: { type: builtin, name: iteration_count }
-        target: iterations
+                Write code to complete this task.
+              inputs:
+                - name: task
+                  type: string
+                - name: guidelines
+                  type: string
+                - name: feedback
+                  type: string
+              outputs:
+                - name: code
+                  type: string
 
-    # Inner workflow (inline)
-    inlineWorkflow:
-      nodes:
-        - id: coder
-          type: agent
-          data:
-            label: Coder
-            nodeType: agent
-            runner: claude-code
-            prompt: |
-              Task: {{ task }}
-              Context: {{ context }}
+          - id: review
+            type: agent
+            data:
+              label: Reviewer
+              nodeType: agent
+              runner: openai
+              model: gpt-4o
+              prompt: |
+                Review this code:
+                {{ inputs.code }}
 
-              Write code to complete this task.
-            inputs:
-              - name: task
-                type: string
-              - name: context
-                type: string
-            outputs:
-              - name: code
-                type: string
+                Evaluate the code quality and determine if it meets the requirements.
+              outputSchema: |
+                {
+                  "type": "object",
+                  "properties": {
+                    "approved": { "type": "boolean" },
+                    "feedback": { "type": "string" }
+                  },
+                  "required": ["approved", "feedback"]
+                }
+              inputs:
+                - name: code
+                  type: string
+              outputs:
+                - name: approved
+                  type: boolean
+                - name: feedback
+                  type: string
 
-        - id: review
-          type: agent
-          data:
-            label: Reviewer
-            nodeType: agent
-            runner: claude-code
-            prompt: |
-              Review this code:
-              {{ coder.code }}
+        edges:
+          # Input → Coder
+          - { source: input, target: coder, sourceHandle: "output:task", targetHandle: "input:task" }
+          - { source: input, target: coder, sourceHandle: "output:guidelines", targetHandle: "input:guidelines" }
+          - { source: input, target: coder, sourceHandle: "output:prev.feedback", targetHandle: "input:feedback" }
 
-              Respond with JSON: { "approved": boolean, "feedback": string }
-            inputs:
-              - name: code
-                type: string
-            outputs:
-              - name: approved
-                type: boolean
-              - name: feedback
-                type: string
+          # Coder → Review
+          - { source: coder, target: review, sourceHandle: "output:code", targetHandle: "input:code" }
 
-      edges:
-        - source: coder
-          target: review
-          sourceHandle: output:code
-          targetHandle: input:code
+          # Review → Output
+          - { source: review, target: output, sourceHandle: "output:approved", targetHandle: "input:approved" }
+          - { source: review, target: output, sourceHandle: "output:feedback", targetHandle: "input:feedback" }
+          - { source: coder, target: output, sourceHandle: "output:code", targetHandle: "input:final_code" }
+
+          # Review → NOT → Continue
+          - { source: review, target: not-gate, sourceHandle: "output:approved", targetHandle: "input:value" }
+          - { source: not-gate, target: continue, sourceHandle: "output:result", targetHandle: "input:continue" }
+
+edges: []  # Loop is standalone in this example
 ```
+
+> **Note**: The inner workflow explicitly wires everything - including the continue condition. The `interface-input` auto-exposes `prev.*` outputs for each `interface-output` input from the previous iteration.
+
+---
+
+## Simple Test Example (Shell-Only)
+
+A minimal loop example using only shell nodes for quick testing during development:
+
+```yaml
+version: 2
+metadata:
+  name: Counter Loop Test
+  description: Simple loop that counts up to a target number
+
+nodes:
+  - id: trigger
+    type: trigger
+    data:
+      nodeType: trigger
+      label: Start
+      triggerType: manual
+      outputs:
+        - name: text
+          type: string
+
+  - id: count-loop
+    type: loop
+    data:
+      label: Count to 5
+      nodeType: loop
+      maxIterations: 10
+
+      inputs:
+        - name: target
+          type: string
+          default: "5"
+
+      outputs:
+        - name: final_count
+          type: number
+
+      inlineWorkflow:
+        nodes:
+          # Interface nodes
+          - id: input
+            type: interface-input
+            data:
+              nodeType: interface-input
+              label: Input
+              outputs:
+                - name: target
+                  type: string
+                - name: iteration
+                  type: number
+                # prev.count auto-generated from interface-output
+
+          - id: output
+            type: interface-output
+            data:
+              nodeType: interface-output
+              label: Output
+              inputs:
+                - name: count
+                  type: number
+
+          - id: continue
+            type: interface-continue
+            data:
+              nodeType: interface-continue
+              label: Continue?
+              inputs:
+                - name: continue
+                  type: boolean
+
+          # Counter logic
+          - id: counter
+            type: shell
+            data:
+              nodeType: shell
+              label: Increment Counter
+              script: |
+                TARGET={{ inputs.target }}
+                PREV={{ inputs.prev_count }}
+                PREV=${PREV:-0}
+                COUNT=$((PREV + 1))
+                echo "Count: $COUNT / $TARGET"
+                if [ $COUNT -lt $TARGET ]; then
+                  echo "CONTINUE=true"
+                else
+                  echo "CONTINUE=false"
+                fi
+              inputs:
+                - name: target
+                  type: string
+                - name: prev_count
+                  type: number
+              outputs:
+                - name: count
+                  type: number
+                  extract:
+                    type: regex
+                    pattern: 'Count: (\d+)'
+                - name: should_continue
+                  type: boolean
+                  extract:
+                    type: regex
+                    pattern: 'CONTINUE=(true|false)'
+
+        edges:
+          # Input → Counter
+          - { source: input, target: counter, sourceHandle: "output:target", targetHandle: "input:target" }
+          - { source: input, target: counter, sourceHandle: "output:prev.count", targetHandle: "input:prev_count" }
+
+          # Counter → Output
+          - { source: counter, target: output, sourceHandle: "output:count", targetHandle: "input:count" }
+
+          # Counter → Continue
+          - { source: counter, target: continue, sourceHandle: "output:should_continue", targetHandle: "input:continue" }
+
+edges:
+  - { source: trigger, target: count-loop, sourceHandle: "output:text", targetHandle: "input:target" }
+```
+
+This example:
+- Trigger starts workflow; its `text` output wires to loop's `target` input
+- Run via CLI: `shodan run counter-loop.yaml --input "5"`
+- Uses shell nodes only (no API keys needed)
+- Demonstrates the `extract` field for parsing structured data from shell output
+- Uses `interface-input.prev.count` to access previous iteration's count
+- Wires `should_continue` boolean directly to `interface-continue`
 
 ---
 
@@ -243,24 +495,27 @@ interface OutputMapping {
 
 ```
 1. Initialize
-   - Set iteration_count = 0
-   - Resolve outer inputs
+   - iteration = 0
+   - Resolve outer inputs from incoming edges
 
-2. Execute iteration
-   - iteration_count++
-   - Apply input mappings (outer or previous outputs)
-   - Execute inner workflow
-   - Store outputs for potential next iteration
+2. Prepare interface-input
+   - iteration++
+   - Populate outputs from outer edges (task, guidelines, etc.)
+   - Set iteration = current iteration number
+   - Set prev.* = interface-output values from previous iteration (null if iteration == 1)
 
-3. Check continuation
-   - Evaluate continueWhile condition
-   - If true AND iteration_count < maxIterations: goto step 2
-   - If false OR iteration_count >= maxIterations: goto step 4
+3. Execute inner workflow
+   - Run topological sort and execute all nodes
+   - interface-output collects values
+   - interface-continue receives boolean
 
-4. Finalize
-   - Apply output mappings
-   - Produce loop node outputs
-   - Include iteration_count as built-in output
+4. Check continuation
+   - Read interface-continue.continue value
+   - If true AND iteration < maxIterations: goto step 2
+   - If false OR iteration >= maxIterations: goto step 5
+
+5. Finalize
+   - Loop's output ports ← interface-output values from last iteration
 ```
 
 ### Error Handling
@@ -269,16 +524,44 @@ interface OutputMapping {
 - If max iterations reached: loop terminates with warning, outputs last successful iteration
 - All iteration outputs are available in execution logs for debugging
 
+### Validation
+
+The executor must validate:
+- Exactly one `interface-input` node exists
+- Exactly one `interface-output` node exists
+- Exactly one `interface-continue` node exists
+- `interface-continue` has an incoming edge to its `continue` input
+
 ---
 
 ## UI Considerations
 
 ### Loop Node Display
 
-- Collapsed view: shows as single node with I/O ports
-- Expanded view: shows inner workflow (like drilling into a component)
-- Iteration indicator during execution: "Iteration 3/5"
-- Progress visualization: show which iteration is running
+Unlike components, loops show their inner workflow directly:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 🔁 Loop: Code Review                              [max: 5]     │
+│ ○ task                                        approved ●       │
+│ ○ guidelines                                  final_code ●     │
+├─────────────────────────────────────────────────────────────────┤
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │                                                             │ │
+│ │   ⊕ Input ──▶ 🤖 Coder ──▶ 🤖 Review ──▶ ⊕ Output          │ │
+│ │       │                         │                           │ │
+│ │       └─────────────────────────┼──▶ NOT ──▶ ⊕ Continue     │ │
+│ │                                 │                           │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│ During execution: "Iteration 3/5"                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Inner workflow is always visible (not hidden like components)
+- Interface nodes (⊕) have distinct styling
+- Iteration progress shown during execution
+- Max iterations displayed in header
 
 ### Configuration Panel
 
@@ -286,90 +569,132 @@ interface OutputMapping {
 ┌─────────────────────────────────────────────────┐
 │ Loop: Code Review                               │
 ├─────────────────────────────────────────────────┤
-│ Inner Workflow: [Edit Inline] [Select File ▼]  │
-├─────────────────────────────────────────────────┤
-│ Continue While:                                 │
-│   Output: [review.approved ▼]                   │
-│   Operator: [== ▼]                              │
-│   Value: [false]                                │
-├─────────────────────────────────────────────────┤
 │ Max Iterations: [5    ]                         │
 ├─────────────────────────────────────────────────┤
-│ Input Mappings                          [+ Add] │
-│ ┌─────────────────────────────────────────────┐ │
-│ │ task (outer) → coder.task [all      ▼]     │ │
-│ │ guidelines → coder.context [first   ▼]     │ │
-│ │ review.feedback → coder.context [after ▼]  │ │
-│ └─────────────────────────────────────────────┘ │
+│ Inner Workflow:                                 │
+│   ○ Inline (edit in canvas)                     │
+│   ○ Reference: [________________] [Browse...]   │
 ├─────────────────────────────────────────────────┤
-│ Output Mappings                         [+ Add] │
-│ ┌─────────────────────────────────────────────┐ │
-│ │ review.approved → approved [last ▼]        │ │
-│ │ coder.code → final_code [last ▼]           │ │
-│ └─────────────────────────────────────────────┘ │
+│ Inputs (from interface-input):                  │
+│   • task (string, required)                     │
+│   • guidelines (string)                         │
+├─────────────────────────────────────────────────┤
+│ Outputs (from interface-output):                │
+│   • approved (boolean)                          │
+│   • final_code (string)                         │
 └─────────────────────────────────────────────────┘
 ```
+
+- No mappings UI needed - wiring is visual in the inner workflow
+- Inputs/outputs derived from interface nodes
+- Config panel is simpler than before
 
 ---
 
 ## Relationship to Components
 
-The Loop node is similar to a Component node but with iteration:
+**A Loop is a Component with iteration semantics.** The inner workflow is treated exactly like a component's internal workflow, with the addition of:
+- **Iteration**: Re-executes the inner workflow multiple times
+- **Feedback**: Previous iteration outputs can feed into the next iteration via `inputMappings`
+- **Termination**: `continueWhile` condition evaluated after each iteration
 
 | Aspect | Component | Loop |
 |--------|-----------|------|
 | Contains workflow | Yes | Yes |
-| Executes once | Yes | No (multiple) |
 | Has I/O interface | Yes | Yes |
-| Feeds outputs back | No | Yes |
-| Has termination condition | No | Yes |
+| Executes once | Yes | No (iterates) |
+| Previous outputs → next inputs | No | Yes (`inputMappings` with `iterations: subsequent`) |
+| Termination condition | No | Yes (`continueWhile`) |
 
-Implementation can share infrastructure:
-- Workflow embedding/referencing
-- I/O port display
-- Drill-down navigation
-- Input/output mapping UI
+**Implementation sharing** - Loops should reuse component infrastructure:
+- Workflow embedding (`inlineWorkflow`) and referencing (`workflowRef`)
+- I/O port display and configuration
+- Drill-down navigation to view/edit inner workflow
+- Input/output mapping UI (extended with iteration controls)
+
+---
+
+## Project Structure
+
+Loop implementation files will be organized in the monorepo structure:
+
+```
+src/
+├── core/src/
+│   └── loop-types.ts       # LoopNodeData, InputMapping, OutputMapping interfaces
+├── server/src/engine/
+│   └── loop-executor.ts    # Loop execution logic, iteration management
+├── designer/src/
+│   ├── nodes/LoopNode.tsx  # Loop node UI component (or extend BaseNode)
+│   └── components/
+│       └── LoopConfigPanel.tsx  # Loop-specific configuration UI
+└── cli/
+    └── (no changes needed - uses server executor)
+```
+
+---
+
+## Template Syntax
+
+The loop system uses the same template syntax as the I/O system. All values are accessed via wired edges, not magic variables:
+
+| Source | How to Access | Example |
+|--------|---------------|---------|
+| Outer inputs | Wire from `interface-input` outputs | `interface-input.task → coder.task` |
+| Iteration number | Wire from `interface-input.iteration` | Can be used in prompts via edge |
+| Previous iteration | Wire from `interface-input.prev.*` | `interface-input.prev.feedback → coder.feedback` |
+
+**No special loop template syntax** - everything is explicit wiring through interface nodes.
 
 ---
 
 ## Implementation Phases
 
+> **Prerequisite**: The I/O system (Phases 1-5) and Component system (Phase 6) must be complete. This provides:
+> - Typed input/output ports on nodes
+> - Interface nodes (`interface-input`, `interface-output`)
+> - Edge-based data flow between nodes
+
+### Phase 0: Type Definitions
+- [ ] Add `LoopNodeData` interface to `@shodan/core`
+- [ ] Add `InterfaceContinueNodeData` interface
+- [ ] Add `loop` and `interface-continue` to node type unions
+- [ ] Update workflow schema types if needed
+
 ### Phase 1: Core Loop Execution
-- [ ] Loop node type definition
-- [ ] Basic execution: run inner workflow N times
-- [ ] Continuation condition evaluation
-- [ ] Input mapping (outer → inner, previous → inner)
-- [ ] Output mapping (inner → outer)
+- [ ] Loop node executor implementation
+- [ ] Validate inner workflow has required interface nodes
+- [ ] Implement iteration lifecycle (prepare → execute → check → repeat)
+- [ ] `interface-input`: populate with outer inputs + `iteration` + `prev.*`
+- [ ] `interface-output`: collect values, make available as `prev.*` next iteration
+- [ ] `interface-continue`: read boolean to decide continuation
+- [ ] Respect `maxIterations` limit
 
 ### Phase 2: UI Support
-- [ ] Loop node rendering (collapsed)
-- [ ] Configuration panel
-- [ ] Execution progress indicator
+- [ ] Loop node as visible container (not abstracted like components)
+- [ ] Interface node styling (distinct from regular nodes)
+- [ ] Execution progress indicator ("Iteration 3/5")
+- [ ] Configuration panel (just `maxIterations` + workflow source)
 
-### Phase 3: Drill-Down
-- [ ] Expand to view inner workflow
-- [ ] Edit inner workflow inline
-- [ ] Iteration history view (see each iteration's outputs)
+### Phase 3: Polish
+- [ ] Iteration history view (see each iteration's outputs in logs)
+- [ ] Validation error messages for missing interface nodes
+- [ ] Support `workflowRef` (reference external workflow file as loop body)
 
 ---
 
 ## Open Questions
 
-1. **Parallel loops**: Should we support map/forEach patterns where the loop runs in parallel over a collection?
+1. **Parallel loops (map/forEach)**: Should we support running iterations in parallel over a collection? This would be a different primitive - more like a "map" node than a feedback loop.
 
-2. **Break conditions**: Besides the continue condition, should there be explicit break/early-exit outputs?
+2. **Nested loops**: Loops containing loops should work naturally since the inner workflow can contain any nodes. Worth testing.
 
-3. **Iteration state access**: Should inner nodes be able to access `iteration_count` as a template variable?
+3. **Session resumption**: For CLI agents (claude-code, codex), should we support resuming the same conversation across iterations?
+   - Pro: Agent remembers previous attempts, reduces token usage
+   - Con: Adds complexity, session cleanup needed
+   - Decision: Defer to future enhancement
 
-4. **Nested loops**: Should loops be nestable? (Probably yes, but adds complexity)
-
-5. **Session resumption**: For CLI tools that support session IDs (claude-code, codex, etc.), loops could resume the same conversation across iterations rather than starting fresh. This would:
-   - Preserve context (agent remembers previous attempts)
-   - Reduce token usage (no need to re-send full history)
-   - Enable more natural "revise based on feedback" flows
-
-   Considerations:
-   - Agent node would need `sessionId` output that persists across iterations
-   - Runner adapters need `--resume <session-id>` support detection
-   - How to handle session cleanup after loop completes?
-   - Should session resumption be opt-in per agent node?
+4. **Logic nodes**: The examples use a shell-based NOT gate. Should we add built-in logic nodes (NOT, AND, OR, comparison)?
+   - Pro: Cleaner than shell workarounds
+   - Con: Scope creep
+   - Decision: Start with shell-based logic; add built-ins if patterns emerge
