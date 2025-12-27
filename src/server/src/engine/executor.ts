@@ -25,14 +25,26 @@ export interface ExecuteResult {
   success: boolean;
   results: NodeResult[];
   executionOrder: string[];
+  outputs: Map<string, Record<string, unknown>>;  // Node outputs (extracted values)
   error?: string;  // Error message if workflow failed
+}
+
+/**
+ * Dock context for loop execution - provides dock slot values to inner nodes
+ */
+export interface DockContext {
+  dockOutputs: Record<string, unknown>;  // Map of dock handle ID -> value
+  dockOutputEdges: WorkflowEdge[];       // Edges from dock outputs to inner nodes
 }
 
 export interface ExecuteOptions {
   rootDirectory?: string;
   startNodeId?: string;
+  startNodeIds?: string[];  // Multiple start nodes (for loop inner workflows)
+  loopId?: string;          // ID of the loop being executed (for filtering nested children)
   triggerInputs?: Record<string, unknown>;  // Inputs to pass to trigger nodes (e.g., from CLI --input)
   workflowInputs?: Record<string, unknown>;  // Inputs when workflow is run as component
+  dockContext?: DockContext;                 // Dock context for loop inner workflow execution
   onNodeStart?: (nodeId: string, node: WorkflowNode) => void;
   onNodeComplete?: (nodeId: string, result: NodeResult) => void;
 }
@@ -48,14 +60,25 @@ interface ExecutionContext {
   triggerInputs?: Record<string, unknown>;
   // Workflow inputs when run as a component
   workflowInputs?: Record<string, unknown>;
+  // Dock context for loop inner workflow execution
+  dockContext?: DockContext;
 }
 
 /**
  * Build adjacency map: source -> [targets]
+ * Excludes dock input edges (feedback to loop) which should not trigger sequential execution
  */
 function buildAdjacencyMap(edges: WorkflowEdge[]): Map<string, string[]> {
   const adjacency = new Map<string, string[]>();
   for (const edge of edges) {
+    // Skip dock input edges - these are feedback edges to loops, not sequential dependencies
+    // Dock input edges have targetHandle like "dock:*:input" or "dock:*:current"
+    const targetHandle = edge.targetHandle || '';
+    if (targetHandle.startsWith('dock:') &&
+        (targetHandle.endsWith(':input') || targetHandle.endsWith(':current'))) {
+      continue;
+    }
+
     if (!adjacency.has(edge.source)) {
       adjacency.set(edge.source, []);
     }
@@ -79,6 +102,7 @@ function isTypeCompatible(sourceType: ValueType, targetType: ValueType): boolean
 
 /**
  * Resolve input values for a node from incoming edges
+ * Also handles dock output edges when running inside a loop
  */
 function resolveInputs(
   nodeId: string,
@@ -89,8 +113,21 @@ function resolveInputs(
   const inputValues: Record<string, unknown> = {};
   const inputs = node.data.inputs || [];
 
-  // Build map of input name -> edge
-  const incomingEdges = edges.filter(e => e.target === nodeId);
+  // Collect all incoming edges, but avoid duplicates between regular edges and dock edges
+  const regularIncomingEdges = edges.filter(e => e.target === nodeId);
+
+  // Get dock output edges targeting this node (if in loop context)
+  const dockEdgesToThisNode = context.dockContext
+    ? context.dockContext.dockOutputEdges.filter(e => e.target === nodeId)
+    : [];
+
+  // Create a set of dock edge IDs to avoid duplicates
+  const dockEdgeIds = new Set(dockEdgesToThisNode.map(e => e.id));
+
+  // Only include regular edges that aren't also dock edges
+  const incomingEdges = regularIncomingEdges.filter(e => !dockEdgeIds.has(e.id));
+  incomingEdges.push(...dockEdgesToThisNode);
+
   const edgesByInputName = new Map<string, WorkflowEdge>();
 
   for (const edge of incomingEdges) {
@@ -134,6 +171,19 @@ function resolveInputs(
 
     // Get source output value
     const sourceHandle = edge.sourceHandle || 'output:output';
+
+    // Check if this is a dock output edge or loop input edge
+    // Dock handles: dock:iteration:output, dock:count:prev, etc.
+    // Loop input handles: input:target (passing loop's input to inner nodes)
+    const isDockHandle = sourceHandle.startsWith('dock:') || sourceHandle.startsWith('input:');
+    if (isDockHandle && context.dockContext) {
+      // Get value from dock context
+      const dockValue = context.dockContext.dockOutputs[sourceHandle];
+      inputValues[inputDef.name] = dockValue;
+      continue;
+    }
+
+    // Regular edge - get from context.outputs
     const outputName = sourceHandle.startsWith('output:')
       ? sourceHandle.substring(7)
       : sourceHandle;
@@ -964,7 +1014,7 @@ export async function executeWorkflow(
   edges: WorkflowEdge[],
   options: ExecuteOptions = {}
 ): Promise<ExecuteResult> {
-  const { rootDirectory, startNodeId, triggerInputs, workflowInputs, onNodeStart, onNodeComplete } = options;
+  const { rootDirectory, startNodeId, startNodeIds, loopId, triggerInputs, workflowInputs, dockContext, onNodeStart, onNodeComplete } = options;
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
   const adjacency = buildAdjacencyMap(edges);
@@ -974,10 +1024,17 @@ export async function executeWorkflow(
     nodeLabels: new Map(nodes.map(n => [n.id, (n.data.label as string) || n.id])),
     triggerInputs,
     workflowInputs,
+    dockContext,
   };
 
   let startNodes: string[];
-  if (startNodeId) {
+  if (startNodeIds && startNodeIds.length > 0) {
+    // Multiple start nodes specified (for loop inner workflows)
+    startNodes = startNodeIds.filter(id => nodeMap.has(id));
+    if (startNodes.length === 0) {
+      throw new Error('No valid start nodes found');
+    }
+  } else if (startNodeId) {
     if (!nodeMap.has(startNodeId)) {
       throw new Error(`Start node '${startNodeId}' not found`);
     }
@@ -1004,6 +1061,21 @@ export async function executeWorkflow(
 
     const node = nodeMap.get(nodeId);
     if (!node) continue;
+
+    // Skip nodes that have a parentId - they are children of container nodes (like loops)
+    // and should only be executed by their parent, not by the main workflow
+    // Exception: when we're inside a loop (indicated by loopId being set), allow execution
+    // ONLY if the node's parentId matches the loop we're executing
+    if (node.parentId) {
+      const isOurChild = loopId && node.parentId === loopId;
+      if (!isOurChild) {
+        // This node belongs to a different parent (or we're not in a loop)
+        // Don't execute it, but do continue traversing
+        const downstream = adjacency.get(nodeId) || [];
+        queue.push(...downstream);
+        continue;
+      }
+    }
 
     executionOrder.push(nodeId);
 
@@ -1083,6 +1155,7 @@ export async function executeWorkflow(
     success: overallSuccess,
     results,
     executionOrder,
+    outputs: context.outputs,
   };
 }
 
@@ -1096,6 +1169,10 @@ export async function executeWorkflowSchema(
   const nodes: WorkflowNode[] = schema.nodes.map(n => ({
     id: n.id,
     type: n.type,
+    position: n.position,
+    style: n.style,
+    parentId: n.parentId,
+    extent: n.extent,
     data: n.data as WorkflowNode['data'],
   }));
 
