@@ -3,7 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import type { PortDefinition, ValueType } from '@shodan/core';
 import './nodes.css';
 
-export type NodeType = 'agent' | 'shell' | 'script' | 'trigger' | 'workdir' | 'component' | 'interface-input' | 'interface-output';
+export type NodeType = 'agent' | 'shell' | 'script' | 'trigger' | 'workdir' | 'component' | 'interface-input' | 'interface-output' | 'loop' | 'interface-continue';
 export type ExecutionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed';
 
 // Color mapping for port types
@@ -46,6 +46,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   path?: string;
   // Component fields
   workflowPath?: string;  // Path to component workflow file
+  // Loop fields
+  maxIterations?: number;  // Safety limit for loops (default: 10)
+  inlineWorkflow?: unknown;  // Embedded workflow for loops
   // Execution state
   executionStatus?: ExecutionStatus;
   executionOutput?: string;
@@ -61,6 +64,8 @@ const nodeIcons: Record<NodeType, string> = {
   component: '📦',
   'interface-input': '⊕',
   'interface-output': '⊕',
+  loop: '🔁',
+  'interface-continue': '⊕',
 };
 
 const nodeLabels: Record<NodeType, string> = {
@@ -72,6 +77,8 @@ const nodeLabels: Record<NodeType, string> = {
   component: 'Component',
   'interface-input': 'Input',
   'interface-output': 'Output',
+  loop: 'Loop',
+  'interface-continue': 'Continue',
 };
 
 const runnerLabels: Record<string, string> = {
@@ -145,6 +152,21 @@ function getDefaultIO(nodeType: NodeType): { inputs: PortDefinition[]; outputs: 
       inputs: [],
       outputs: []
     };
+  } else if (nodeType === 'loop') {
+    // Loop nodes have I/O defined by interface nodes in inner workflow
+    // Defaults are empty; they get populated from interface-input/output
+    return {
+      inputs: [],
+      outputs: []
+    };
+  } else if (nodeType === 'interface-continue') {
+    // Interface-continue nodes have a single boolean input
+    return {
+      inputs: [
+        { name: 'continue', type: 'boolean', required: true, description: 'Whether to continue iterating' }
+      ],
+      outputs: []
+    };
   } else {
     return {
       inputs: [
@@ -204,7 +226,14 @@ export function BaseNode({ data, selected }: NodeProps) {
         return null;
       case 'interface-input':
       case 'interface-output':
+      case 'interface-continue':
         return '(interface)';
+      case 'loop':
+        if (nodeData.workflowPath) {
+          const fileName = nodeData.workflowPath.split('/').pop() || nodeData.workflowPath;
+          return fileName.replace(/\.(yaml|yml)$/, '');
+        }
+        return nodeData.maxIterations ? `max: ${nodeData.maxIterations}` : null;
       default:
         return null;
     }
