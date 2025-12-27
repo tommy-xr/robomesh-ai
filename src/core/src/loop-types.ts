@@ -7,15 +7,16 @@
  */
 
 import type { PortDefinition } from './io-types.js';
-import type { InlineWorkflow } from './workflow-types.js';
 
 /**
  * Loop node data - defines a loop container
  *
- * A loop contains an inner workflow that executes repeatedly until
+ * A loop contains child nodes that execute repeatedly until
  * the interface-continue node receives `false` on its continue input.
  *
- * The inner workflow MUST contain:
+ * Child nodes use `parentId` to reference the loop (flat model, not nested).
+ *
+ * The loop MUST contain these child nodes (identified by parentId):
  * - Exactly one interface-input node (provides outer inputs + iteration + prev.*)
  * - Exactly one interface-output node (defines loop's output ports)
  * - Exactly one interface-continue node (controls iteration)
@@ -24,14 +25,10 @@ export interface LoopNodeData {
   nodeType: 'loop';
   label: string;
 
-  // Inner workflow - either reference or inline (exactly one must be provided)
-  workflowRef?: string;            // Path to workflow file
-  inlineWorkflow?: InlineWorkflow; // Or embedded workflow
-
   // Safety limit to prevent infinite loops
   maxIterations: number;  // Default: 10
 
-  // I/O ports (derived from interface nodes in inner workflow)
+  // I/O ports (derived from interface nodes in child nodes)
   inputs?: PortDefinition[];
   outputs?: PortDefinition[];
 }

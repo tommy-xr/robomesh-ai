@@ -1,19 +1,19 @@
 /**
  * Loop Executor
  *
- * Handles execution of loop nodes, which contain an inner workflow that
- * executes repeatedly until the interface-continue node receives false.
+ * Handles execution of loop nodes, which contain child nodes that
+ * execute repeatedly until the interface-continue node receives false.
+ *
+ * Child nodes are identified by their `parentId` matching the loop node's ID.
  */
 
 import type {
   WorkflowNode,
   WorkflowEdge,
-  InlineWorkflow,
   LoopNodeData,
 } from '@shodan/core';
 import { LOOP_NODE_DEFAULTS } from '@shodan/core';
 import type { NodeResult, ExecuteOptions, ExecuteResult } from './executor.js';
-import { loadWorkflow, getWorkflowDirectory } from './workflow-loader.js';
 
 /**
  * Validation error for loop nodes
@@ -50,7 +50,7 @@ export interface LoopExecutionResult {
 }
 
 /**
- * Find interface nodes in a workflow
+ * Find interface nodes in a list of nodes
  */
 function findInterfaceNodes(nodes: WorkflowNode[]): {
   interfaceInput: WorkflowNode | undefined;
@@ -76,39 +76,63 @@ function findInterfaceNodes(nodes: WorkflowNode[]): {
 }
 
 /**
- * Validate that a loop's inner workflow has all required interface nodes
+ * Get child nodes and edges for a loop by filtering on parentId
  */
-export function validateLoopWorkflow(workflow: InlineWorkflow): void {
-  const { interfaceInput, interfaceOutput, interfaceContinue } = findInterfaceNodes(workflow.nodes);
+export function getLoopInnerWorkflow(
+  loopNodeId: string,
+  allNodes: WorkflowNode[],
+  allEdges: WorkflowEdge[]
+): { innerNodes: WorkflowNode[]; innerEdges: WorkflowEdge[] } {
+  // Get all child nodes that have this loop as their parent
+  const innerNodes = allNodes.filter(n => n.parentId === loopNodeId);
+
+  // Get edges where both source and target are inner nodes
+  const innerNodeIds = new Set(innerNodes.map(n => n.id));
+  const innerEdges = allEdges.filter(e =>
+    innerNodeIds.has(e.source) && innerNodeIds.has(e.target)
+  );
+
+  return { innerNodes, innerEdges };
+}
+
+/**
+ * Validate that a loop has all required interface nodes
+ */
+export function validateLoopWorkflow(
+  loopNodeId: string,
+  innerNodes: WorkflowNode[],
+  innerEdges: WorkflowEdge[]
+): void {
+  const { interfaceInput, interfaceOutput, interfaceContinue } = findInterfaceNodes(innerNodes);
 
   if (!interfaceInput) {
     throw new LoopValidationError(
-      'Loop inner workflow must contain exactly one interface-input node'
+      `Loop '${loopNodeId}' must contain exactly one interface-input node`
     );
   }
 
   if (!interfaceOutput) {
     throw new LoopValidationError(
-      'Loop inner workflow must contain exactly one interface-output node'
+      `Loop '${loopNodeId}' must contain exactly one interface-output node`
     );
   }
 
   if (!interfaceContinue) {
     throw new LoopValidationError(
-      'Loop inner workflow must contain exactly one interface-continue node'
+      `Loop '${loopNodeId}' must contain exactly one interface-continue node`
     );
   }
 
   // Validate that interface-continue has an incoming edge to its continue input
   const continueNodeId = interfaceContinue.id;
-  const hasIncomingEdge = workflow.edges.some(
+  const hasIncomingEdge = innerEdges.some(
     edge => edge.target === continueNodeId &&
       (edge.targetHandle === 'input:continue' || !edge.targetHandle)
   );
 
   if (!hasIncomingEdge) {
     throw new LoopValidationError(
-      "Loop's interface-continue node must have an incoming edge to its 'continue' input"
+      `Loop '${loopNodeId}': interface-continue node must have an incoming edge to its 'continue' input`
     );
   }
 }
@@ -232,12 +256,16 @@ function extractOutputValues(
  * Execute a loop node
  *
  * This is the main entry point for loop execution. It:
- * 1. Validates the inner workflow structure
- * 2. Runs iterations until continue=false or maxIterations reached
- * 3. Collects and returns the final outputs
+ * 1. Gets child nodes/edges by filtering on parentId
+ * 2. Validates the inner workflow structure
+ * 3. Runs iterations until continue=false or maxIterations reached
+ * 4. Collects and returns the final outputs
  */
 export async function executeLoop(
+  loopNode: WorkflowNode,
   loopNodeData: LoopNodeData,
+  allNodes: WorkflowNode[],
+  allEdges: WorkflowEdge[],
   outerInputs: Record<string, unknown>,
   rootDirectory: string,
   executeWorkflowFn: (
@@ -252,43 +280,23 @@ export async function executeLoop(
 ): Promise<LoopExecutionResult> {
   const maxIterations = loopNodeData.maxIterations ?? LOOP_NODE_DEFAULTS.maxIterations;
 
-  // Get the inner workflow
-  let innerWorkflow: InlineWorkflow;
+  // Get child nodes and edges by filtering on parentId
+  const { innerNodes, innerEdges } = getLoopInnerWorkflow(loopNode.id, allNodes, allEdges);
 
-  if (loopNodeData.inlineWorkflow) {
-    innerWorkflow = loopNodeData.inlineWorkflow;
-  } else if (loopNodeData.workflowRef) {
-    // Load workflow from reference
-    try {
-      const loaded = await loadWorkflow(loopNodeData.workflowRef, rootDirectory);
-      innerWorkflow = {
-        nodes: loaded.nodes,
-        edges: loaded.edges,
-      };
-    } catch (err) {
-      return {
-        success: false,
-        iterations: [],
-        finalOutputs: {},
-        totalIterations: 0,
-        terminationReason: 'error',
-        error: `Failed to load workflow from ref: ${(err as Error).message}`,
-      };
-    }
-  } else {
+  if (innerNodes.length === 0) {
     return {
       success: false,
       iterations: [],
       finalOutputs: {},
       totalIterations: 0,
       terminationReason: 'error',
-      error: 'Loop node must have either inlineWorkflow or workflowRef',
+      error: `Loop '${loopNode.id}' has no child nodes (no nodes with parentId='${loopNode.id}')`,
     };
   }
 
   // Validate the inner workflow structure
   try {
-    validateLoopWorkflow(innerWorkflow);
+    validateLoopWorkflow(loopNode.id, innerNodes, innerEdges);
   } catch (err) {
     return {
       success: false,
@@ -301,12 +309,13 @@ export async function executeLoop(
   }
 
   // Prepare nodes for execution
-  const nodes: WorkflowNode[] = innerWorkflow.nodes.map(n => ({
+  const nodes: WorkflowNode[] = innerNodes.map(n => ({
     id: n.id,
     type: n.type,
+    position: n.position,
     data: n.data,
   }));
-  const edges = innerWorkflow.edges;
+  const edges = innerEdges;
 
   // Get the interface-output node to know what prev.* outputs to provide
   const { interfaceOutput } = findInterfaceNodes(nodes);

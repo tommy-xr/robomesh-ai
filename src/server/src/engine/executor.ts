@@ -547,6 +547,7 @@ function buildOutputValues(
 async function executeNode(
   node: WorkflowNode,
   rootDirectory: string,
+  nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   context: ExecutionContext
 ): Promise<NodeResult> {
@@ -891,10 +892,13 @@ async function executeNode(
 
     try {
       const loopResult = await executeLoop(
-        node.data as LoopNodeData,
-        inputValues,
-        cwd,
-        executeWorkflow,  // Pass the executeWorkflow function for inner workflow execution
+        node,                      // loopNode - for accessing parentId filtering
+        node.data as LoopNodeData, // loopNodeData - loop configuration
+        nodes,                     // allNodes - for finding child nodes by parentId
+        edges,                     // allEdges - for finding internal edges
+        inputValues,               // outerInputs - inputs from connected edges
+        cwd,                       // rootDirectory
+        executeWorkflow,           // executeWorkflowFn - for inner workflow execution
         {
           onIterationStart: (iteration) => {
             // Could add logging or callbacks here
@@ -1045,7 +1049,7 @@ export async function executeWorkflow(
 
     // Process templates with resolved input values
     const processedNode = processNodeTemplates(nodeWithIO, context, inputValues);
-    const result = await executeNode(processedNode, rootDirectory || process.cwd(), edges, context);
+    const result = await executeNode(processedNode, rootDirectory || process.cwd(), nodes, edges, context);
     results.push(result);
 
     if (onNodeComplete) {

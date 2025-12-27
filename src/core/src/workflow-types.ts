@@ -14,6 +14,12 @@ export interface WorkflowNode {
   id: string;
   type: string;
   position?: { x: number; y: number };
+  style?: { width?: number; height?: number };  // Container dimensions
+
+  // Parent-child relationships (for sub-flows like loops)
+  parentId?: string;         // ID of parent container node
+  extent?: 'parent';         // Constrain movement within parent
+
   data: WorkflowNodeData;
 }
 
@@ -60,7 +66,7 @@ export interface WorkflowNodeData {
 
   // Loop node fields
   maxIterations?: number;
-  inlineWorkflow?: InlineWorkflow;
+  // Note: Loop child nodes use parentId instead of inlineWorkflow
 
   // Allow additional fields
   [key: string]: unknown;
@@ -83,14 +89,6 @@ export interface WorkflowEdge {
 export interface WorkflowInterface {
   inputs?: PortDefinition[];
   outputs?: PortDefinition[];
-}
-
-/**
- * Inline workflow - embedded workflow for loops and components
- */
-export interface InlineWorkflow {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
 }
 
 /**

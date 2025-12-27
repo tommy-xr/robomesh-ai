@@ -138,23 +138,41 @@ Final:
 
 ## Loop Node Configuration
 
+### Data Model: Flat `parentId` Approach
+
+Instead of nesting workflows inside loop nodes, we use ReactFlow's native `parentId` pattern. Child nodes reference their parent loop, keeping a flat structure:
+
 ```typescript
 interface LoopNodeData extends BaseNodeData {
   nodeType: 'loop';
 
-  // Inner workflow - either reference or inline (exactly one must be provided)
-  workflowRef?: string;            // Path to workflow file
-  inlineWorkflow?: WorkflowSchema; // Or embedded workflow
-
   // Safety limit to prevent infinite loops
   maxIterations: number;  // Default: 10
+
+  // Container dimensions (for visual rendering)
+  width?: number;   // Default: 500
+  height?: number;  // Default: 400
 }
 
-// The inner workflow MUST contain these interface nodes:
+// Child nodes use parentId to belong to a loop:
+interface ChildNode extends Node {
+  parentId?: string;  // References loop node ID
+  extent?: 'parent';  // Constrains movement within parent
+  position: { x: number; y: number };  // Relative to parent
+}
+
+// The loop MUST contain these child nodes (identified by parentId):
 // - Exactly one interface-input node (provides outer inputs + iteration + prev.*)
 // - Exactly one interface-output node (defines loop's output ports)
 // - Exactly one interface-continue node (controls iteration)
 ```
+
+**Benefits of flat model:**
+- Mirrors ReactFlow's native sub-flow pattern
+- No syncing between visual state and nested data
+- Single source of truth (nodes array)
+- Extensible to future container types (parallel, conditional, retry)
+- Simpler executor logic (filter by parentId)
 
 ### Interface Node Types
 
@@ -185,7 +203,7 @@ interface InterfaceContinueNodeData extends BaseNodeData {
 
 ---
 
-## Example: Code Review Loop
+## Example: Code Review Loop (Flat parentId Model)
 
 ```yaml
 version: 2
@@ -194,173 +212,180 @@ metadata:
   description: Demonstrates a loop that iterates until code review is approved
 
 nodes:
+  # === Loop Container ===
   - id: review-loop
     type: loop
+    position: { x: 100, y: 100 }
+    style: { width: 600, height: 500 }
     data:
       label: Code Review Loop
       nodeType: loop
       maxIterations: 5
 
-      inputs:
+  # === Child Nodes (inside the loop) ===
+  # Note: All child nodes have parentId referencing the loop
+
+  # Interface nodes
+  - id: loop-input
+    type: interface-input
+    parentId: review-loop
+    extent: parent
+    position: { x: 20, y: 50 }
+    data:
+      nodeType: interface-input
+      label: Input
+      outputs:
         - name: task
           type: string
-          required: true
         - name: guidelines
           type: string
+        - name: iteration
+          type: number
+        # prev.* outputs auto-generated from interface-output
 
-      outputs:
+  - id: loop-output
+    type: interface-output
+    parentId: review-loop
+    extent: parent
+    position: { x: 400, y: 350 }
+    data:
+      nodeType: interface-output
+      label: Output
+      inputs:
         - name: approved
           type: boolean
         - name: final_code
           type: string
+        - name: feedback
+          type: string
 
-      inlineWorkflow:
-        nodes:
-          # Interface nodes
-          - id: input
-            type: interface-input
-            data:
-              nodeType: interface-input
-              label: Input
-              outputs:
-                - name: task
-                  type: string
-                - name: guidelines
-                  type: string
-                - name: iteration
-                  type: number
-                # prev.* outputs auto-generated from interface-output
+  - id: loop-continue
+    type: interface-continue
+    parentId: review-loop
+    extent: parent
+    position: { x: 20, y: 350 }
+    data:
+      nodeType: interface-continue
+      label: Continue?
+      inputs:
+        - name: continue
+          type: boolean
 
-          - id: output
-            type: interface-output
-            data:
-              nodeType: interface-output
-              label: Output
-              inputs:
-                - name: approved
-                  type: boolean
-                - name: final_code
-                  type: string
-                - name: feedback
-                  type: string  # Available as prev.feedback on next iteration
+  # Logic nodes
+  - id: not-gate
+    type: shell
+    parentId: review-loop
+    extent: parent
+    position: { x: 200, y: 350 }
+    data:
+      nodeType: shell
+      label: NOT
+      script: |
+        if [ "{{ inputs.value }}" = "true" ]; then
+          echo "false"
+        else
+          echo "true"
+        fi
+      inputs:
+        - name: value
+          type: boolean
+      outputs:
+        - name: result
+          type: boolean
+          extract:
+            type: regex
+            pattern: '(true|false)'
 
-          - id: continue
-            type: interface-continue
-            data:
-              nodeType: interface-continue
-              label: Continue?
-              inputs:
-                - name: continue
-                  type: boolean
+  # Agent nodes
+  - id: coder
+    type: agent
+    parentId: review-loop
+    extent: parent
+    position: { x: 200, y: 50 }
+    data:
+      label: Coder
+      nodeType: agent
+      runner: openai
+      model: gpt-4o
+      prompt: |
+        Task: {{ inputs.task }}
 
-          # Logic nodes
-          - id: not-gate
-            type: shell
-            data:
-              nodeType: shell
-              label: NOT
-              script: |
-                if [ "{{ inputs.value }}" = "true" ]; then
-                  echo "false"
-                else
-                  echo "true"
-                fi
-              inputs:
-                - name: value
-                  type: boolean
-              outputs:
-                - name: result
-                  type: boolean
-                  extract:
-                    type: regex
-                    pattern: '(true|false)'
+        {% if inputs.feedback %}
+        Previous feedback to address:
+        {{ inputs.feedback }}
+        {% else %}
+        Guidelines: {{ inputs.guidelines }}
+        {% endif %}
 
-          # Agent nodes
-          - id: coder
-            type: agent
-            data:
-              label: Coder
-              nodeType: agent
-              runner: openai
-              model: gpt-4o
-              prompt: |
-                Task: {{ inputs.task }}
+        Write code to complete this task.
+      inputs:
+        - name: task
+          type: string
+        - name: guidelines
+          type: string
+        - name: feedback
+          type: string
+      outputs:
+        - name: code
+          type: string
 
-                {% if inputs.feedback %}
-                Previous feedback to address:
-                {{ inputs.feedback }}
-                {% else %}
-                Guidelines: {{ inputs.guidelines }}
-                {% endif %}
+  - id: reviewer
+    type: agent
+    parentId: review-loop
+    extent: parent
+    position: { x: 400, y: 150 }
+    data:
+      label: Reviewer
+      nodeType: agent
+      runner: openai
+      model: gpt-4o
+      prompt: |
+        Review this code:
+        {{ inputs.code }}
 
-                Write code to complete this task.
-              inputs:
-                - name: task
-                  type: string
-                - name: guidelines
-                  type: string
-                - name: feedback
-                  type: string
-              outputs:
-                - name: code
-                  type: string
+        Evaluate the code quality and determine if it meets the requirements.
+      outputSchema: |
+        {
+          "type": "object",
+          "properties": {
+            "approved": { "type": "boolean" },
+            "feedback": { "type": "string" }
+          },
+          "required": ["approved", "feedback"]
+        }
+      inputs:
+        - name: code
+          type: string
+      outputs:
+        - name: approved
+          type: boolean
+        - name: feedback
+          type: string
 
-          - id: review
-            type: agent
-            data:
-              label: Reviewer
-              nodeType: agent
-              runner: openai
-              model: gpt-4o
-              prompt: |
-                Review this code:
-                {{ inputs.code }}
+edges:
+  # Input → Coder
+  - { source: loop-input, target: coder, sourceHandle: "output:task", targetHandle: "input:task" }
+  - { source: loop-input, target: coder, sourceHandle: "output:guidelines", targetHandle: "input:guidelines" }
+  - { source: loop-input, target: coder, sourceHandle: "output:prev.feedback", targetHandle: "input:feedback" }
 
-                Evaluate the code quality and determine if it meets the requirements.
-              outputSchema: |
-                {
-                  "type": "object",
-                  "properties": {
-                    "approved": { "type": "boolean" },
-                    "feedback": { "type": "string" }
-                  },
-                  "required": ["approved", "feedback"]
-                }
-              inputs:
-                - name: code
-                  type: string
-              outputs:
-                - name: approved
-                  type: boolean
-                - name: feedback
-                  type: string
+  # Coder → Review
+  - { source: coder, target: reviewer, sourceHandle: "output:code", targetHandle: "input:code" }
 
-        edges:
-          # Input → Coder
-          - { source: input, target: coder, sourceHandle: "output:task", targetHandle: "input:task" }
-          - { source: input, target: coder, sourceHandle: "output:guidelines", targetHandle: "input:guidelines" }
-          - { source: input, target: coder, sourceHandle: "output:prev.feedback", targetHandle: "input:feedback" }
+  # Review → Output
+  - { source: reviewer, target: loop-output, sourceHandle: "output:approved", targetHandle: "input:approved" }
+  - { source: reviewer, target: loop-output, sourceHandle: "output:feedback", targetHandle: "input:feedback" }
+  - { source: coder, target: loop-output, sourceHandle: "output:code", targetHandle: "input:final_code" }
 
-          # Coder → Review
-          - { source: coder, target: review, sourceHandle: "output:code", targetHandle: "input:code" }
-
-          # Review → Output
-          - { source: review, target: output, sourceHandle: "output:approved", targetHandle: "input:approved" }
-          - { source: review, target: output, sourceHandle: "output:feedback", targetHandle: "input:feedback" }
-          - { source: coder, target: output, sourceHandle: "output:code", targetHandle: "input:final_code" }
-
-          # Review → NOT → Continue
-          - { source: review, target: not-gate, sourceHandle: "output:approved", targetHandle: "input:value" }
-          - { source: not-gate, target: continue, sourceHandle: "output:result", targetHandle: "input:continue" }
-
-edges: []  # Loop is standalone in this example
+  # Review → NOT → Continue
+  - { source: reviewer, target: not-gate, sourceHandle: "output:approved", targetHandle: "input:value" }
+  - { source: not-gate, target: loop-continue, sourceHandle: "output:result", targetHandle: "input:continue" }
 ```
 
-> **Note**: The inner workflow explicitly wires everything - including the continue condition. The `interface-input` auto-exposes `prev.*` outputs for each `interface-output` input from the previous iteration.
+> **Note**: All edges are at the top level - the executor identifies inner edges by checking if both source and target have `parentId` matching the loop. The `interface-input` auto-exposes `prev.*` outputs for each `interface-output` input from the previous iteration.
 
 ---
 
-## Simple Test Example (Shell-Only)
+## Simple Test Example (Shell-Only, Flat parentId Model)
 
 A minimal loop example using only shell nodes for quick testing during development:
 
@@ -371,8 +396,10 @@ metadata:
   description: Simple loop that counts up to a target number
 
 nodes:
+  # === Trigger (outside loop) ===
   - id: trigger
     type: trigger
+    position: { x: 50, y: 200 }
     data:
       nodeType: trigger
       label: Start
@@ -381,111 +408,114 @@ nodes:
         - name: text
           type: string
 
+  # === Loop Container ===
   - id: count-loop
     type: loop
+    position: { x: 250, y: 100 }
+    style: { width: 450, height: 350 }
     data:
       label: Count to 5
       nodeType: loop
       maxIterations: 10
 
+  # === Child Nodes (inside loop) ===
+  - id: loop-input
+    type: interface-input
+    parentId: count-loop
+    extent: parent
+    position: { x: 20, y: 50 }
+    data:
+      nodeType: interface-input
+      label: Input
+      outputs:
+        - name: target
+          type: string
+        - name: iteration
+          type: number
+        # prev.count auto-generated from interface-output
+
+  - id: loop-output
+    type: interface-output
+    parentId: count-loop
+    extent: parent
+    position: { x: 300, y: 200 }
+    data:
+      nodeType: interface-output
+      label: Output
+      inputs:
+        - name: count
+          type: number
+
+  - id: loop-continue
+    type: interface-continue
+    parentId: count-loop
+    extent: parent
+    position: { x: 20, y: 200 }
+    data:
+      nodeType: interface-continue
+      label: Continue?
+      inputs:
+        - name: continue
+          type: boolean
+
+  - id: counter
+    type: shell
+    parentId: count-loop
+    extent: parent
+    position: { x: 180, y: 50 }
+    data:
+      nodeType: shell
+      label: Increment Counter
+      script: |
+        TARGET={{ inputs.target }}
+        PREV={{ inputs.prev_count }}
+        PREV=${PREV:-0}
+        COUNT=$((PREV + 1))
+        echo "Count: $COUNT / $TARGET"
+        if [ $COUNT -lt $TARGET ]; then
+          echo "CONTINUE=true"
+        else
+          echo "CONTINUE=false"
+        fi
       inputs:
         - name: target
           type: string
-          default: "5"
-
-      outputs:
-        - name: final_count
+        - name: prev_count
           type: number
-
-      inlineWorkflow:
-        nodes:
-          # Interface nodes
-          - id: input
-            type: interface-input
-            data:
-              nodeType: interface-input
-              label: Input
-              outputs:
-                - name: target
-                  type: string
-                - name: iteration
-                  type: number
-                # prev.count auto-generated from interface-output
-
-          - id: output
-            type: interface-output
-            data:
-              nodeType: interface-output
-              label: Output
-              inputs:
-                - name: count
-                  type: number
-
-          - id: continue
-            type: interface-continue
-            data:
-              nodeType: interface-continue
-              label: Continue?
-              inputs:
-                - name: continue
-                  type: boolean
-
-          # Counter logic
-          - id: counter
-            type: shell
-            data:
-              nodeType: shell
-              label: Increment Counter
-              script: |
-                TARGET={{ inputs.target }}
-                PREV={{ inputs.prev_count }}
-                PREV=${PREV:-0}
-                COUNT=$((PREV + 1))
-                echo "Count: $COUNT / $TARGET"
-                if [ $COUNT -lt $TARGET ]; then
-                  echo "CONTINUE=true"
-                else
-                  echo "CONTINUE=false"
-                fi
-              inputs:
-                - name: target
-                  type: string
-                - name: prev_count
-                  type: number
-              outputs:
-                - name: count
-                  type: number
-                  extract:
-                    type: regex
-                    pattern: 'Count: (\d+)'
-                - name: should_continue
-                  type: boolean
-                  extract:
-                    type: regex
-                    pattern: 'CONTINUE=(true|false)'
-
-        edges:
-          # Input → Counter
-          - { source: input, target: counter, sourceHandle: "output:target", targetHandle: "input:target" }
-          - { source: input, target: counter, sourceHandle: "output:prev.count", targetHandle: "input:prev_count" }
-
-          # Counter → Output
-          - { source: counter, target: output, sourceHandle: "output:count", targetHandle: "input:count" }
-
-          # Counter → Continue
-          - { source: counter, target: continue, sourceHandle: "output:should_continue", targetHandle: "input:continue" }
+      outputs:
+        - name: count
+          type: number
+          extract:
+            type: regex
+            pattern: 'Count: (\d+)'
+        - name: should_continue
+          type: boolean
+          extract:
+            type: regex
+            pattern: 'CONTINUE=(true|false)'
 
 edges:
+  # External: Trigger → Loop (connects to loop's input port)
   - { source: trigger, target: count-loop, sourceHandle: "output:text", targetHandle: "input:target" }
+
+  # Internal: Input → Counter
+  - { source: loop-input, target: counter, sourceHandle: "output:target", targetHandle: "input:target" }
+  - { source: loop-input, target: counter, sourceHandle: "output:prev.count", targetHandle: "input:prev_count" }
+
+  # Internal: Counter → Output
+  - { source: counter, target: loop-output, sourceHandle: "output:count", targetHandle: "input:count" }
+
+  # Internal: Counter → Continue
+  - { source: counter, target: loop-continue, sourceHandle: "output:should_continue", targetHandle: "input:continue" }
 ```
 
 This example:
-- Trigger starts workflow; its `text` output wires to loop's `target` input
+- Trigger starts workflow; connects to loop's external input port
 - Run via CLI: `shodan run counter-loop.yaml --input "5"`
 - Uses shell nodes only (no API keys needed)
-- Demonstrates the `extract` field for parsing structured data from shell output
+- All nodes are flat in the `nodes` array - child nodes have `parentId: count-loop`
+- All edges are flat in the `edges` array - executor filters by parentId to find inner edges
 - Uses `interface-input.prev.count` to access previous iteration's count
-- Wires `should_continue` boolean directly to `interface-continue`
 
 ---
 
@@ -629,9 +659,12 @@ src/
 ├── designer/src/
 │   ├── nodes/
 │   │   ├── BaseNode.tsx    # Extended with loop, interface-continue types ✅
+│   │   ├── nodes.css       # Loop and interface node styling ✅
 │   │   └── index.ts        # Node type registry ✅
+│   ├── index.css           # CSS variables for loop colors ✅
 │   └── components/
-│       └── LoopConfigPanel.tsx  # Loop-specific configuration UI (Phase 2)
+│       ├── ConfigPanel.tsx # LoopConfig + InterfaceConfig (interface-continue) ✅
+│       └── Sidebar.tsx     # Loop node in palette ✅
 └── cli/
     └── (no changes needed - uses server executor)
 ```
@@ -681,16 +714,228 @@ The loop system uses the same template syntax as the I/O system. All values are 
 - Test workflow: `workflows/test-loop-counter.yaml` demonstrates counting loop with shell nodes
 - All existing tests pass
 
-### Phase 2: UI Support
-- [ ] Loop node as visible container (not abstracted like components)
-- [ ] Interface node styling (distinct from regular nodes)
-- [ ] Execution progress indicator ("Iteration 3/5")
-- [ ] Configuration panel (just `maxIterations` + workflow source)
+### Phase 2: UI Support (Basic) ✅
+- [x] Loop node styling (purple color scheme)
+- [x] Interface node styling (dashed cyan borders)
+- [x] Execution progress indicator ("Iteration 3/5")
+- [x] Configuration panel (maxIterations, workflow source picker)
+- [x] Loop node in sidebar palette
 
-### Phase 3: Polish
+**Phase 2 completion notes:**
+- Added loop node styling with purple color scheme (`--node-loop: #a855f7`)
+- Interface nodes (`interface-input`, `interface-output`, `interface-continue`) have dashed cyan borders
+- Loop node added to sidebar palette for drag-and-drop creation
+- Created `LoopConfig` component in ConfigPanel
+- Execution progress shows "Iteration X/Y" during loop execution with pulse animation
+- Added `currentIteration` field to `BaseNodeData` for tracking loop progress
+
+**Note:** Phase 2 implemented basic styling but NOT the container/sub-flow behavior. The loop currently acts as a regular node. Phases 3a-3d implement the visual container using ReactFlow's sub-flow pattern.
+
+---
+
+### Phase 3a: Loop as Sub-Flow Container
+
+**Goal:** Transform the loop node into a visual container using ReactFlow's `parentId` pattern.
+
+**Key Concepts (from ReactFlow docs):**
+- Child nodes use `parentId` to reference parent
+- Child positions are **relative** to parent (not absolute)
+- `extent: 'parent'` constrains children within parent bounds
+- Parent nodes must appear **before** children in the nodes array
+
+**Tasks:**
+- [ ] Create `LoopContainerNode` component (renders as resizable frame)
+- [ ] Update node type registry to use container node for loops
+- [ ] Add minimum dimensions for loop container (e.g., 400x300)
+- [ ] Style container with header bar (label, max iterations badge) and content area
+- [ ] Auto-create interface nodes when loop is dropped:
+  - `interface-input` (top-left of container)
+  - `interface-output` (bottom-right of container)
+  - `interface-continue` (bottom-center of container)
+- [ ] Set `parentId` on interface nodes to link them to loop
+- [ ] Ensure parent nodes sorted before children in nodes array
+
+**Data Structure Changes:**
+```typescript
+// Loop container node
+{
+  id: 'loop-1',
+  type: 'loop',
+  position: { x: 100, y: 100 },
+  style: { width: 500, height: 400 },  // Container dimensions
+  data: {
+    nodeType: 'loop',
+    label: 'Code Review Loop',
+    maxIterations: 5,
+  }
+}
+
+// Child interface node (auto-created)
+{
+  id: 'loop-1-input',
+  type: 'interface-input',
+  parentId: 'loop-1',              // Links to parent
+  extent: 'parent',                 // Constrained to parent
+  position: { x: 20, y: 50 },       // Relative to parent
+  data: {
+    nodeType: 'interface-input',
+    label: 'Input',
+    outputs: [...]
+  }
+}
+```
+
+---
+
+### Phase 3b: Drag-and-Drop into Loop Container
+
+**Goal:** Allow users to drag nodes from palette into loop, and move existing nodes into/out of loops.
+
+**Tasks:**
+- [ ] Detect when node is dropped inside loop container bounds
+- [ ] Auto-set `parentId` and convert position to relative coordinates
+- [ ] Handle dragging node out of loop (remove `parentId`, convert to absolute)
+- [ ] Visual feedback when dragging over loop (highlight drop zone)
+- [ ] Prevent interface nodes from being dragged out of their parent loop
+- [ ] Update edge connections when nodes move into/out of loops
+
+**Drop Detection Logic:**
+```typescript
+const onNodeDragStop = (event, node) => {
+  // Find if node is inside any loop container
+  const loopContainers = nodes.filter(n => n.data.nodeType === 'loop');
+
+  for (const loop of loopContainers) {
+    if (isInsideBounds(node.position, loop)) {
+      // Convert to relative position and set parentId
+      node.parentId = loop.id;
+      node.extent = 'parent';
+      node.position = {
+        x: node.position.x - loop.position.x,
+        y: node.position.y - loop.position.y
+      };
+    }
+  }
+};
+```
+
+---
+
+### Phase 3c: Visual Frame and Interface Node Layout
+
+**Goal:** Clear visual indication of loop boundary with organized interface node placement.
+
+**Visual Design:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 🔁 Code Review Loop                                   [max: 5]  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐                                                │
+│  │ ⊕ Input     │─────────────────────┐                         │
+│  │   task ●    │                     │                         │
+│  │   prev.* ●  │                     ▼                         │
+│  │   iter ●    │              ┌──────────────┐                 │
+│  └─────────────┘              │  [User adds  │                 │
+│                               │   nodes here]│                 │
+│                               └──────┬───────┘                 │
+│                                      │                         │
+│  ┌─────────────┐              ┌──────▼───────┐                 │
+│  │ ⊕ Continue  │◀─────────────│ ⊕ Output     │                 │
+│  │ ○ continue  │              │ ○ result     │                 │
+│  └─────────────┘              └──────────────┘                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tasks:**
+- [ ] Loop header bar with icon, label, and max iterations badge
+- [ ] Dashed or double border to distinguish from regular nodes
+- [ ] Resize handles on loop container
+- [ ] Minimum size enforcement (must fit interface nodes)
+- [ ] Interface nodes positioned at semantic locations:
+  - Input: top-left (data flows in)
+  - Output: bottom-right (data flows out)
+  - Continue: bottom-left (loop control)
+- [ ] Visual guides/snap lines for alignment inside loop
+- [ ] Different background color/pattern for loop interior
+
+---
+
+### Phase 3d: Executor Support for Flat parentId Model
+
+**Goal:** Update the loop executor to find inner nodes/edges by filtering on `parentId` instead of reading `inlineWorkflow`.
+
+**Tasks:**
+- [ ] Remove `inlineWorkflow` and `workflowRef` from `LoopNodeData` type
+- [ ] Update `executeLoop()` to filter nodes by `parentId`
+- [ ] Update `executeLoop()` to filter edges where both endpoints are inside loop
+- [ ] Validate required interface nodes exist (interface-input, interface-output, interface-continue)
+- [ ] Show validation warnings if required nodes are missing
+- [ ] Update workflow YAML schema to support `parentId` and `extent` on nodes
+
+**Executor Logic:**
+```typescript
+const executeLoop = async (
+  loopNode: WorkflowNode,
+  allNodes: WorkflowNode[],
+  allEdges: WorkflowEdge[],
+  context: ExecutionContext
+) => {
+  // Get child nodes by filtering on parentId
+  const innerNodes = allNodes.filter(n => n.parentId === loopNode.id);
+
+  // Get inner edges (both endpoints inside loop)
+  const innerNodeIds = new Set(innerNodes.map(n => n.id));
+  const innerEdges = allEdges.filter(e =>
+    innerNodeIds.has(e.source) && innerNodeIds.has(e.target)
+  );
+
+  // Validate required interface nodes
+  const interfaceInput = innerNodes.find(n => n.data.nodeType === 'interface-input');
+  const interfaceOutput = innerNodes.find(n => n.data.nodeType === 'interface-output');
+  const interfaceContinue = innerNodes.find(n => n.data.nodeType === 'interface-continue');
+
+  if (!interfaceInput || !interfaceOutput || !interfaceContinue) {
+    throw new Error('Loop missing required interface nodes');
+  }
+
+  // Execute iterations using innerNodes and innerEdges...
+};
+```
+
+---
+
+### Phase 3e: Loop I/O Ports on Container
+
+**Goal:** Loop container shows input/output ports based on interface nodes inside.
+
+**Tasks:**
+- [ ] Loop container has input handles on left (from interface-input outputs)
+- [ ] Loop container has output handles on right (from interface-output inputs)
+- [ ] Ports update automatically when interface nodes change
+- [ ] External nodes can connect to loop's ports
+- [ ] Connections to loop ports map to interface node connections internally
+
+**Visual:**
+```
+                    ┌─────────────────────────────────────┐
+     ○ task ────────│ 🔁 Code Review Loop                 │──────── approved ●
+     ○ guidelines ──│                                     │──────── final_code ●
+                    │   [interface-input]──▶[...]──▶[interface-output]
+                    │                         │
+                    │                    [interface-continue]
+                    └─────────────────────────────────────┘
+```
+
+---
+
+### Phase 4: Polish
 - [ ] Iteration history view (see each iteration's outputs in logs)
-- [ ] Validation error messages for missing interface nodes
-- [ ] Support `workflowRef` (reference external workflow file as loop body)
+- [ ] Validation error messages for missing interface nodes (visual indicators)
+- [ ] Copy/paste nodes into loops
+- [ ] Undo/redo support for loop operations
+- [ ] Support `workflowRef` (reference external workflow file as loop body) - lower priority since inline is default
 
 ---
 

@@ -53,6 +53,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   executionStatus?: ExecutionStatus;
   executionOutput?: string;
   executionError?: string;
+  // Loop execution state
+  currentIteration?: number;  // Current iteration number (1-based)
 }
 
 const nodeIcons: Record<NodeType, string> = {
@@ -228,12 +230,19 @@ export function BaseNode({ data, selected }: NodeProps) {
       case 'interface-output':
       case 'interface-continue':
         return '(interface)';
-      case 'loop':
-        if (nodeData.workflowPath) {
+      case 'loop': {
+        const parts: string[] = [];
+        // Show iteration progress if running
+        if (nodeData.currentIteration && execStatus === 'running') {
+          parts.push(`Iteration ${nodeData.currentIteration}/${nodeData.maxIterations || 10}`);
+        } else if (nodeData.workflowPath) {
           const fileName = nodeData.workflowPath.split('/').pop() || nodeData.workflowPath;
-          return fileName.replace(/\.(yaml|yml)$/, '');
+          parts.push(fileName.replace(/\.(yaml|yml)$/, ''));
+        } else if (nodeData.maxIterations) {
+          parts.push(`max: ${nodeData.maxIterations}`);
         }
-        return nodeData.maxIterations ? `max: ${nodeData.maxIterations}` : null;
+        return parts.length > 0 ? parts.join(' · ') : null;
+      }
       default:
         return null;
     }
