@@ -25,6 +25,7 @@ function formatNodeType(type: NodeType): string {
     'interface-output': 'Interface Output',
     'interface-continue': 'Interface Continue',
     'loop': 'Loop',
+    'constant': 'Constant',
   };
   return labels[type] || type.charAt(0).toUpperCase() + type.slice(1);
 }
@@ -68,6 +69,7 @@ export function ConfigPanel({ node, rootDirectory, onClose, onUpdate }: ConfigPa
         {nodeType === 'workdir' && <WorkdirConfig node={node} onUpdate={onUpdate} />}
         {nodeType === 'component' && <ComponentConfig node={node} />}
         {nodeType === 'loop' && <LoopConfig node={node} onUpdate={onUpdate} />}
+        {nodeType === 'constant' && <ConstantConfig node={node} onUpdate={onUpdate} />}
         {(nodeType === 'interface-input' || nodeType === 'interface-output' || nodeType === 'interface-continue') && <InterfaceConfig node={node} onUpdate={onUpdate} />}
 
         {/* Execution Output */}
@@ -547,6 +549,91 @@ function InterfaceConfig({ node, onUpdate }: Omit<NodeConfigProps, 'rootDirector
           onUpdate(node.id, isInput ? { outputs: newPorts } : { inputs: newPorts })
         }
       />
+    </>
+  );
+}
+
+type ConstantValueType = 'boolean' | 'number' | 'string';
+
+function ConstantConfig({ node, onUpdate }: Omit<NodeConfigProps, 'rootDirectory'>) {
+  const valueType = (node.data.valueType as ConstantValueType) || 'string';
+  const value = node.data.value;
+
+  // Handle type change - reset value to appropriate default
+  const handleTypeChange = (newType: ConstantValueType) => {
+    let newValue: boolean | number | string;
+    switch (newType) {
+      case 'boolean':
+        newValue = false;
+        break;
+      case 'number':
+        newValue = 0;
+        break;
+      case 'string':
+      default:
+        newValue = '';
+        break;
+    }
+    onUpdate(node.id, {
+      valueType: newType,
+      value: newValue,
+      outputs: [{ name: 'value', type: newType }],
+    });
+  };
+
+  // Handle value change based on type
+  const handleValueChange = (newValue: boolean | number | string) => {
+    onUpdate(node.id, { value: newValue });
+  };
+
+  return (
+    <>
+      <div className="config-field">
+        <label>Value Type</label>
+        <select
+          value={valueType}
+          onChange={(e) => handleTypeChange(e.target.value as ConstantValueType)}
+        >
+          <option value="string">String</option>
+          <option value="number">Number</option>
+          <option value="boolean">Boolean</option>
+        </select>
+      </div>
+      <div className="config-field">
+        <label>Value</label>
+        {valueType === 'boolean' ? (
+          <div className="toggle-field">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={Boolean(value)}
+                onChange={(e) => handleValueChange(e.target.checked)}
+              />
+              <span className="toggle-text">{value ? 'true' : 'false'}</span>
+            </label>
+          </div>
+        ) : valueType === 'number' ? (
+          <input
+            type="number"
+            value={typeof value === 'number' ? value : 0}
+            onChange={(e) => handleValueChange(parseFloat(e.target.value) || 0)}
+          />
+        ) : (
+          <input
+            type="text"
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => handleValueChange(e.target.value)}
+            placeholder="Enter value..."
+          />
+        )}
+      </div>
+      <div className="config-field">
+        <label>Output</label>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+          <code style={{ color: 'var(--text-primary)' }}>value</code>
+          <span style={{ marginLeft: '8px', opacity: 0.7 }}>({valueType})</span>
+        </div>
+      </div>
     </>
   );
 }
