@@ -1,75 +1,11 @@
 import { spawn } from 'child_process';
 import { executeAgent, type RunnerType } from './agents/index.js';
-import type { PortDefinition, ValueType } from '@shodan/core';
+import type { PortDefinition, ValueType, WorkflowNode, WorkflowEdge, WorkflowSchema, LoopNodeData } from '@shodan/core';
+import { isLoopNodeData } from '@shodan/core';
 import { loadWorkflow, getWorkflowDirectory } from './workflow-loader.js';
+import { executeLoop } from './loop-executor.js';
 
 export type NodeStatus = 'pending' | 'running' | 'completed' | 'failed';
-
-export interface WorkflowNode {
-  id: string;
-  type: string;
-  data: {
-    label?: string;
-    nodeType?: string;
-    // I/O definitions
-    inputs?: PortDefinition[];
-    outputs?: PortDefinition[];
-    // Execution options
-    continueOnFailure?: boolean; // If true, workflow continues even if this node fails
-    // Node-specific fields
-    script?: string; // New: single multi-line script
-    commands?: string[]; // Legacy: array of commands
-    scriptFiles?: string[];
-    scriptFile?: string; // Script node: path to .js, .ts, or .sh file
-    scriptArgs?: string; // Script node: arguments to pass
-    path?: string;
-    prompt?: string;
-    // Component node fields
-    workflowPath?: string; // Path to workflow file (relative to root)
-    componentInputs?: Record<string, unknown>; // Static input values for component
-    [key: string]: unknown;
-  };
-}
-
-export interface WorkflowEdge {
-  id: string;
-  source: string;
-  target: string;
-  sourceHandle?: string;  // Format: "output:outputName"
-  targetHandle?: string;  // Format: "input:inputName"
-}
-
-/**
- * Workflow interface definition for composable workflows
- * Defines the external inputs and outputs when used as a component
- */
-export interface WorkflowInterface {
-  inputs?: PortDefinition[];
-  outputs?: PortDefinition[];
-}
-
-export interface WorkflowSchema {
-  version: number;
-  metadata: {
-    name: string;
-    description?: string;
-    rootDirectory?: string;
-  };
-  interface?: WorkflowInterface;  // External I/O when used as component
-  nodes: Array<{
-    id: string;
-    type: string;
-    position: { x: number; y: number };
-    data: Record<string, unknown>;
-  }>;
-  edges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    sourceHandle?: string;  // Format: "output:outputName"
-    targetHandle?: string;  // Format: "input:inputName"
-  }>;
-}
 
 export interface NodeResult {
   nodeId: string;
@@ -89,14 +25,26 @@ export interface ExecuteResult {
   success: boolean;
   results: NodeResult[];
   executionOrder: string[];
+  outputs: Map<string, Record<string, unknown>>;  // Node outputs (extracted values)
   error?: string;  // Error message if workflow failed
+}
+
+/**
+ * Dock context for loop execution - provides dock slot values to inner nodes
+ */
+export interface DockContext {
+  dockOutputs: Record<string, unknown>;  // Map of dock handle ID -> value
+  dockOutputEdges: WorkflowEdge[];       // Edges from dock outputs to inner nodes
 }
 
 export interface ExecuteOptions {
   rootDirectory?: string;
   startNodeId?: string;
+  startNodeIds?: string[];  // Multiple start nodes (for loop inner workflows)
+  loopId?: string;          // ID of the loop being executed (for filtering nested children)
   triggerInputs?: Record<string, unknown>;  // Inputs to pass to trigger nodes (e.g., from CLI --input)
   workflowInputs?: Record<string, unknown>;  // Inputs when workflow is run as component
+  dockContext?: DockContext;                 // Dock context for loop inner workflow execution
   onNodeStart?: (nodeId: string, node: WorkflowNode) => void;
   onNodeComplete?: (nodeId: string, result: NodeResult) => void;
 }
@@ -112,14 +60,25 @@ interface ExecutionContext {
   triggerInputs?: Record<string, unknown>;
   // Workflow inputs when run as a component
   workflowInputs?: Record<string, unknown>;
+  // Dock context for loop inner workflow execution
+  dockContext?: DockContext;
 }
 
 /**
  * Build adjacency map: source -> [targets]
+ * Excludes dock input edges (feedback to loop) which should not trigger sequential execution
  */
 function buildAdjacencyMap(edges: WorkflowEdge[]): Map<string, string[]> {
   const adjacency = new Map<string, string[]>();
   for (const edge of edges) {
+    // Skip dock input edges - these are feedback edges to loops, not sequential dependencies
+    // Dock input edges have targetHandle like "dock:*:input" or "dock:*:current"
+    const targetHandle = edge.targetHandle || '';
+    if (targetHandle.startsWith('dock:') &&
+        (targetHandle.endsWith(':input') || targetHandle.endsWith(':current'))) {
+      continue;
+    }
+
     if (!adjacency.has(edge.source)) {
       adjacency.set(edge.source, []);
     }
@@ -143,6 +102,7 @@ function isTypeCompatible(sourceType: ValueType, targetType: ValueType): boolean
 
 /**
  * Resolve input values for a node from incoming edges
+ * Also handles dock output edges when running inside a loop
  */
 function resolveInputs(
   nodeId: string,
@@ -153,13 +113,30 @@ function resolveInputs(
   const inputValues: Record<string, unknown> = {};
   const inputs = node.data.inputs || [];
 
-  // Build map of input name -> edge
-  const incomingEdges = edges.filter(e => e.target === nodeId);
+  // Collect all incoming edges, but avoid duplicates between regular edges and dock edges
+  const regularIncomingEdges = edges.filter(e => e.target === nodeId);
+
+  // Get dock output edges targeting this node (if in loop context)
+  const dockEdgesToThisNode = context.dockContext
+    ? context.dockContext.dockOutputEdges.filter(e => e.target === nodeId)
+    : [];
+
+  // Create a set of dock edge IDs to avoid duplicates
+  const dockEdgeIds = new Set(dockEdgesToThisNode.map(e => e.id));
+
+  // Only include regular edges that aren't also dock edges
+  const incomingEdges = regularIncomingEdges.filter(e => !dockEdgeIds.has(e.id));
+  incomingEdges.push(...dockEdgesToThisNode);
+
   const edgesByInputName = new Map<string, WorkflowEdge>();
 
   for (const edge of incomingEdges) {
-    // Parse target handle: "input:inputName"
-    const targetHandle = edge.targetHandle || 'input:input';
+    // Parse target handle: "input:inputName" or "input:inputName:internal"
+    let targetHandle = edge.targetHandle || 'input:input';
+    // Strip :internal suffix if present (used for internal loop handles)
+    if (targetHandle.endsWith(':internal')) {
+      targetHandle = targetHandle.slice(0, -9);
+    }
     const inputName = targetHandle.startsWith('input:')
       ? targetHandle.substring(6)
       : targetHandle;
@@ -197,7 +174,24 @@ function resolveInputs(
     }
 
     // Get source output value
-    const sourceHandle = edge.sourceHandle || 'output:output';
+    let sourceHandle = edge.sourceHandle || 'output:output';
+    // Strip :internal suffix if present (used for internal loop handles)
+    if (sourceHandle.endsWith(':internal')) {
+      sourceHandle = sourceHandle.slice(0, -9);
+    }
+
+    // Check if this is a dock output edge or loop input edge
+    // Dock handles: dock:iteration:output, dock:count:prev, etc.
+    // Loop input handles: input:target (passing loop's input to inner nodes)
+    const isDockHandle = sourceHandle.startsWith('dock:') || sourceHandle.startsWith('input:');
+    if (isDockHandle && context.dockContext) {
+      // Get value from dock context
+      const dockValue = context.dockContext.dockOutputs[sourceHandle];
+      inputValues[inputDef.name] = dockValue;
+      continue;
+    }
+
+    // Regular edge - get from context.outputs
     const outputName = sourceHandle.startsWith('output:')
       ? sourceHandle.substring(7)
       : sourceHandle;
@@ -611,6 +605,7 @@ function buildOutputValues(
 async function executeNode(
   node: WorkflowNode,
   rootDirectory: string,
+  nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   context: ExecutionContext
 ): Promise<NodeResult> {
@@ -855,6 +850,20 @@ async function executeNode(
     };
   }
 
+  // Interface-continue node: controls loop iteration
+  // This node receives a boolean 'continue' input that determines whether the loop continues
+  if (nodeType === 'interface-continue') {
+    // Pass through - the loop executor reads this value to decide continuation
+    return {
+      nodeId: node.id,
+      status: 'completed',
+      output: 'Interface continue node',
+      rawOutput: JSON.stringify(inputValues),
+      startTime,
+      endTime: new Date().toISOString(),
+    };
+  }
+
   // Component node: executes another workflow as a sub-workflow
   if (nodeType === 'component') {
     const workflowPath = node.data.workflowPath as string | undefined;
@@ -926,6 +935,76 @@ async function executeNode(
     }
   }
 
+  // Loop node: executes inner workflow iteratively until continue=false
+  if (nodeType === 'loop') {
+    if (!isLoopNodeData(node.data)) {
+      return {
+        nodeId: node.id,
+        status: 'failed',
+        output: '',
+        error: 'Invalid loop node data',
+        startTime,
+        endTime: new Date().toISOString(),
+      };
+    }
+
+    try {
+      const loopResult = await executeLoop(
+        node,                      // loopNode - for accessing parentId filtering
+        node.data as LoopNodeData, // loopNodeData - loop configuration
+        nodes,                     // allNodes - for finding child nodes by parentId
+        edges,                     // allEdges - for finding internal edges
+        inputValues,               // outerInputs - inputs from connected edges
+        cwd,                       // rootDirectory
+        executeWorkflow,           // executeWorkflowFn - for inner workflow execution
+        {
+          onIterationStart: (iteration) => {
+            // Could add logging or callbacks here
+          },
+          onIterationComplete: (result) => {
+            // Could add logging or callbacks here
+          },
+        }
+      );
+
+      if (!loopResult.success) {
+        return {
+          nodeId: node.id,
+          status: 'failed',
+          output: `Loop failed after ${loopResult.totalIterations} iterations`,
+          rawOutput: JSON.stringify(loopResult.finalOutputs),
+          error: loopResult.error,
+          startTime,
+          endTime: new Date().toISOString(),
+        };
+      }
+
+      // Return success with final outputs
+      const terminationNote = loopResult.terminationReason === 'max_iterations'
+        ? ` (max iterations reached)`
+        : '';
+
+      return {
+        nodeId: node.id,
+        status: 'completed',
+        output: `Loop completed after ${loopResult.totalIterations} iterations${terminationNote}`,
+        rawOutput: JSON.stringify(loopResult.finalOutputs),
+        structuredOutput: loopResult.finalOutputs,
+        startTime,
+        endTime: new Date().toISOString(),
+      };
+    } catch (err) {
+      return {
+        nodeId: node.id,
+        status: 'failed',
+        output: '',
+        error: `Failed to execute loop: ${(err as Error).message}`,
+        startTime,
+        endTime: new Date().toISOString(),
+      };
+    }
+  }
+
   return {
     nodeId: node.id,
     status: 'completed',
@@ -943,7 +1022,7 @@ export async function executeWorkflow(
   edges: WorkflowEdge[],
   options: ExecuteOptions = {}
 ): Promise<ExecuteResult> {
-  const { rootDirectory, startNodeId, triggerInputs, workflowInputs, onNodeStart, onNodeComplete } = options;
+  const { rootDirectory, startNodeId, startNodeIds, loopId, triggerInputs, workflowInputs, dockContext, onNodeStart, onNodeComplete } = options;
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
   const adjacency = buildAdjacencyMap(edges);
@@ -953,10 +1032,17 @@ export async function executeWorkflow(
     nodeLabels: new Map(nodes.map(n => [n.id, (n.data.label as string) || n.id])),
     triggerInputs,
     workflowInputs,
+    dockContext,
   };
 
   let startNodes: string[];
-  if (startNodeId) {
+  if (startNodeIds && startNodeIds.length > 0) {
+    // Multiple start nodes specified (for loop inner workflows)
+    startNodes = startNodeIds.filter(id => nodeMap.has(id));
+    if (startNodes.length === 0) {
+      throw new Error('No valid start nodes found');
+    }
+  } else if (startNodeId) {
     if (!nodeMap.has(startNodeId)) {
       throw new Error(`Start node '${startNodeId}' not found`);
     }
@@ -983,6 +1069,28 @@ export async function executeWorkflow(
 
     const node = nodeMap.get(nodeId);
     if (!node) continue;
+
+    // Skip the loop node itself when executing inside that loop
+    // This prevents the loop from re-executing itself when downstream edges lead back to it
+    if (loopId && nodeId === loopId) {
+      // Don't execute the loop container from within its own inner workflow
+      continue;
+    }
+
+    // Skip nodes that have a parentId - they are children of container nodes (like loops)
+    // and should only be executed by their parent, not by the main workflow
+    // Exception: when we're inside a loop (indicated by loopId being set), allow execution
+    // ONLY if the node's parentId matches the loop we're executing
+    if (node.parentId) {
+      const isOurChild = loopId && node.parentId === loopId;
+      if (!isOurChild) {
+        // This node belongs to a different parent (or we're not in a loop)
+        // Don't execute it, but do continue traversing
+        const downstream = adjacency.get(nodeId) || [];
+        queue.push(...downstream);
+        continue;
+      }
+    }
 
     executionOrder.push(nodeId);
 
@@ -1028,7 +1136,7 @@ export async function executeWorkflow(
 
     // Process templates with resolved input values
     const processedNode = processNodeTemplates(nodeWithIO, context, inputValues);
-    const result = await executeNode(processedNode, rootDirectory || process.cwd(), edges, context);
+    const result = await executeNode(processedNode, rootDirectory || process.cwd(), nodes, edges, context);
     results.push(result);
 
     if (onNodeComplete) {
@@ -1062,6 +1170,7 @@ export async function executeWorkflow(
     success: overallSuccess,
     results,
     executionOrder,
+    outputs: context.outputs,
   };
 }
 
@@ -1075,6 +1184,10 @@ export async function executeWorkflowSchema(
   const nodes: WorkflowNode[] = schema.nodes.map(n => ({
     id: n.id,
     type: n.type,
+    position: n.position,
+    style: n.style,
+    parentId: n.parentId,
+    extent: n.extent,
     data: n.data as WorkflowNode['data'],
   }));
 

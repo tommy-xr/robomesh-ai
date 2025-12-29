@@ -11,7 +11,8 @@ import assert from 'node:assert';
 import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'js-yaml';
-import { executeWorkflowSchema, type WorkflowSchema } from './engine/executor.js';
+import type { WorkflowSchema } from '@shodan/core';
+import { executeWorkflowSchema } from './engine/executor.js';
 
 const WORKFLOWS_DIR = path.resolve(import.meta.dirname, '../../../workflows');
 
@@ -224,6 +225,46 @@ describe('Phase 2: I/O System', () => {
     // This is the key assertion - sibling was already queued but should not execute
     const siblingNode = result.results.find(r => r.nodeId === 'shell-sibling');
     assert.strictEqual(siblingNode, undefined, 'Sibling node should not have executed after input resolution failure');
+  });
+});
+
+describe('Loop Execution', () => {
+  test('test-loop-dock.yaml - dock-based loop executes correct number of iterations', async () => {
+    const schema = await loadWorkflow('test-loop-dock.yaml');
+    const result = await executeWorkflowSchema(schema);
+
+    assert.strictEqual(result.success, true, 'Workflow should succeed');
+    assert.ok(result.results.length > 0, 'Should have node results');
+
+    // Find the loop node result
+    const loopResult = result.results.find(r => r.nodeId === 'count-loop');
+    assert.ok(loopResult, 'Should have count-loop result');
+    assert.strictEqual(loopResult.status, 'completed', 'Loop should complete successfully');
+
+    // Loop should have counted to 5 (default target)
+    assert.ok(
+      loopResult.output?.includes('5 iterations'),
+      `Loop should complete 5 iterations, got: ${loopResult.output}`
+    );
+  });
+
+  test('test-loop-nested.yaml - nested loops execute correctly', async () => {
+    const schema = await loadWorkflow('test-loop-nested.yaml');
+    const result = await executeWorkflowSchema(schema);
+
+    assert.strictEqual(result.success, true, 'Workflow should succeed');
+    assert.ok(result.results.length > 0, 'Should have node results');
+
+    // Find the outer loop result
+    const outerLoopResult = result.results.find(r => r.nodeId === 'outer-loop');
+    assert.ok(outerLoopResult, 'Should have outer-loop result');
+    assert.strictEqual(outerLoopResult.status, 'completed', 'Outer loop should complete successfully');
+
+    // Outer loop should complete 3 iterations (i=1,2,3)
+    assert.ok(
+      outerLoopResult.output?.includes('3 iterations'),
+      `Outer loop should complete 3 iterations, got: ${outerLoopResult.output}`
+    );
   });
 });
 

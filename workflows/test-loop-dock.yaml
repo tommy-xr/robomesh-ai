@@ -1,0 +1,137 @@
+version: 2
+metadata:
+  name: Counter Loop Test (Dock-Based)
+  description: Simple loop using dock slots for iteration control
+
+nodes:
+  - id: trigger
+    type: trigger
+    position: { x: 100, y: 100 }
+    data:
+      nodeType: trigger
+      label: Start
+      triggerType: manual
+      outputs:
+        - name: text
+          type: string
+
+  # Loop container with dock slots (no interface nodes needed)
+  - id: count-loop
+    type: loop
+    position: { x: 300, y: 50 }
+    style: { width: 500, height: 300 }
+    data:
+      label: Count to Target
+      nodeType: loop
+      maxIterations: 10
+      inputs:
+        - name: trigger
+          type: string
+          required: false
+        - name: target
+          type: string
+          default: "5"
+      outputs:
+        - name: final_count
+          type: number
+      # Dock slots for iteration control
+      dockSlots:
+        - name: iteration
+          type: iteration
+          valueType: number
+          label: Iteration
+        - name: continue
+          type: continue
+          valueType: boolean
+          label: Continue
+        - name: count
+          type: feedback
+          valueType: number
+          label: Count
+
+  # Counter node inside the loop
+  - id: counter
+    type: shell
+    parentId: count-loop
+    extent: parent
+    position: { x: 100, y: 50 }
+    data:
+      nodeType: shell
+      label: Increment Counter
+      script: |
+        TARGET={{ inputs.target }}
+        PREV={{ inputs.prev_count }}
+        ITER={{ inputs.iteration }}
+        # Handle null/empty prev value
+        if [ "$PREV" = "null" ] || [ -z "$PREV" ]; then
+          PREV=0
+        fi
+        COUNT=$((PREV + 1))
+        echo "Iteration $ITER: Count = $COUNT / $TARGET"
+        if [ $COUNT -lt $TARGET ]; then
+          echo "CONTINUE=true"
+        else
+          echo "CONTINUE=false"
+        fi
+      inputs:
+        - name: target
+          type: string
+        - name: prev_count
+          type: number
+        - name: iteration
+          type: number
+      outputs:
+        - name: count
+          type: number
+          extract:
+            type: regex
+            pattern: 'Count = (\d+)'
+        - name: should_continue
+          type: boolean
+          extract:
+            type: regex
+            pattern: 'CONTINUE=(true|false)'
+
+edges:
+  # Trigger -> Loop (connect to ensure loop runs after trigger)
+  # Note: target input uses its default value of "5"
+  - id: trigger-to-loop
+    source: trigger
+    target: count-loop
+    sourceHandle: "output:text"
+    targetHandle: "input:trigger"
+
+  # Loop input -> Counter (pass target from loop's internal input to inner node)
+  - id: loop-target-to-counter
+    source: count-loop
+    target: counter
+    sourceHandle: "input:target:internal"
+    targetHandle: "input:target"
+
+  # Dock: iteration output -> Counter
+  - id: dock-iter-to-counter
+    source: count-loop
+    target: counter
+    sourceHandle: "dock:iteration:output"
+    targetHandle: "input:iteration"
+
+  # Dock: count.prev -> Counter (feedback from previous iteration)
+  - id: dock-count-prev-to-counter
+    source: count-loop
+    target: counter
+    sourceHandle: "dock:count:prev"
+    targetHandle: "input:prev_count"
+
+  # Counter -> Dock: count.current (store for next iteration)
+  - id: counter-to-dock-count
+    source: counter
+    target: count-loop
+    sourceHandle: "output:count"
+    targetHandle: "dock:count:current"
+
+  # Counter -> Dock: continue (control loop)
+  - id: counter-to-dock-continue
+    source: counter
+    target: count-loop
+    sourceHandle: "output:should_continue"
+    targetHandle: "dock:continue:input"

@@ -1,0 +1,232 @@
+version: 2
+metadata:
+  name: Nested Loop Test (i/j Pattern)
+  description: Tests nested loops - outer loop (i) and inner loop (j)
+
+nodes:
+  - id: trigger
+    type: trigger
+    position: { x: 50, y: 150 }
+    data:
+      nodeType: trigger
+      label: Start
+      triggerType: manual
+      outputs:
+        - name: text
+          type: string
+
+  # Outer loop (i = 1 to 3)
+  - id: outer-loop
+    type: loop
+    position: { x: 200, y: 50 }
+    style: { width: 700, height: 400 }
+    data:
+      label: Outer Loop (i)
+      nodeType: loop
+      maxIterations: 5
+      inputs:
+        - name: trigger
+          type: string
+          required: false
+        - name: outer_max
+          type: number
+          default: 3
+      outputs:
+        - name: results
+          type: string
+      dockSlots:
+        - name: i
+          type: iteration
+          valueType: number
+          label: i
+        - name: continue_outer
+          type: continue
+          valueType: boolean
+          label: Continue
+        - name: outer_count
+          type: feedback
+          valueType: number
+          label: Outer Count
+
+  # Inner loop (j = 1 to 2)
+  - id: inner-loop
+    type: loop
+    parentId: outer-loop
+    extent: parent
+    position: { x: 50, y: 50 }
+    style: { width: 500, height: 250 }
+    data:
+      label: Inner Loop (j)
+      nodeType: loop
+      maxIterations: 5
+      inputs:
+        - name: trigger
+          type: string
+          required: false
+        - name: i_value
+          type: number
+        - name: inner_max
+          type: number
+          default: 2
+      outputs:
+        - name: inner_results
+          type: string
+      dockSlots:
+        - name: j
+          type: iteration
+          valueType: number
+          label: j
+        - name: continue_inner
+          type: continue
+          valueType: boolean
+          label: Continue
+        - name: pair
+          type: feedback
+          valueType: string
+          label: Pair
+
+  # Inner node that prints i,j pairs
+  - id: print-pair
+    type: shell
+    parentId: inner-loop
+    extent: parent
+    position: { x: 50, y: 50 }
+    data:
+      nodeType: shell
+      label: Print Pair
+      script: |
+        I={{ inputs.i_value }}
+        J={{ inputs.j_value }}
+        MAX_J={{ inputs.inner_max }}
+        echo "Pair: ($I, $J)"
+        if [ $J -lt $MAX_J ]; then
+          echo "CONTINUE_INNER=true"
+        else
+          echo "CONTINUE_INNER=false"
+        fi
+      inputs:
+        - name: i_value
+          type: number
+        - name: j_value
+          type: number
+        - name: inner_max
+          type: number
+      outputs:
+        - name: pair_str
+          type: string
+          extract:
+            type: regex
+            pattern: 'Pair: (.+)'
+        - name: should_continue
+          type: boolean
+          extract:
+            type: regex
+            pattern: 'CONTINUE_INNER=(true|false)'
+
+  # Control node for outer loop
+  - id: outer-control
+    type: shell
+    parentId: outer-loop
+    extent: parent
+    position: { x: 200, y: 270 }
+    data:
+      nodeType: shell
+      label: Check Outer
+      script: |
+        I={{ inputs.i_value }}
+        MAX_I={{ inputs.outer_max }}
+        echo "Completed inner loop for i=$I"
+        if [ $I -lt $MAX_I ]; then
+          echo "CONTINUE_OUTER=true"
+        else
+          echo "CONTINUE_OUTER=false"
+        fi
+      inputs:
+        - name: trigger
+          type: string
+          required: false
+        - name: i_value
+          type: number
+        - name: outer_max
+          type: number
+      outputs:
+        - name: status
+          type: string
+          extract:
+            type: full
+        - name: should_continue
+          type: boolean
+          extract:
+            type: regex
+            pattern: 'CONTINUE_OUTER=(true|false)'
+
+edges:
+  # Trigger -> Outer Loop
+  - id: trigger-to-outer
+    source: trigger
+    target: outer-loop
+    sourceHandle: "output:text"
+    targetHandle: "input:trigger"
+
+  # Outer loop iteration -> Inner loop input
+  - id: outer-i-to-inner
+    source: outer-loop
+    target: inner-loop
+    sourceHandle: "dock:i:output"
+    targetHandle: "input:i_value"
+
+  # Outer loop iteration -> Outer control
+  - id: outer-i-to-control
+    source: outer-loop
+    target: outer-control
+    sourceHandle: "dock:i:output"
+    targetHandle: "input:i_value"
+
+  # Outer loop max -> Outer control (from internal input handle)
+  - id: outer-max-to-control
+    source: outer-loop
+    target: outer-control
+    sourceHandle: "input:outer_max:internal"
+    targetHandle: "input:outer_max"
+
+  # Inner loop -> Inner node (j value)
+  - id: inner-j-to-print
+    source: inner-loop
+    target: print-pair
+    sourceHandle: "dock:j:output"
+    targetHandle: "input:j_value"
+
+  # Inner loop -> Inner node (i value passthrough from internal input handle)
+  - id: inner-i-to-print
+    source: inner-loop
+    target: print-pair
+    sourceHandle: "input:i_value:internal"
+    targetHandle: "input:i_value"
+
+  # Inner loop -> Inner node (max j from internal input handle)
+  - id: inner-max-to-print
+    source: inner-loop
+    target: print-pair
+    sourceHandle: "input:inner_max:internal"
+    targetHandle: "input:inner_max"
+
+  # Inner node -> Inner loop continue
+  - id: print-to-inner-continue
+    source: print-pair
+    target: inner-loop
+    sourceHandle: "output:should_continue"
+    targetHandle: "dock:continue_inner:input"
+
+  # Inner loop completion triggers outer control (sequence dependency)
+  - id: inner-to-control
+    source: inner-loop
+    target: outer-control
+    sourceHandle: "output:inner_results"
+    targetHandle: "input:trigger"
+
+  # Outer control -> Outer loop continue
+  - id: control-to-outer-continue
+    source: outer-control
+    target: outer-loop
+    sourceHandle: "output:should_continue"
+    targetHandle: "dock:continue_outer:input"
