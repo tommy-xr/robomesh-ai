@@ -761,10 +761,10 @@ function Flow() {
           id: n.id,
           type: n.type || 'agent',
           position: n.position,
-          data: n.data,
+          data: n.data as Record<string, unknown>,
           // Include loop container properties
           parentId: n.parentId,
-          extent: n.extent,
+          extent: n.extent === 'parent' ? ('parent' as const) : undefined,
           style: n.style as { width?: number; height?: number },
         })),
         edges: edges.map((e) => ({
