@@ -1,528 +1,558 @@
-# Re-entrant Runner: Agent Loop Persistence
+# Re-entrant Runner: Agent Session Persistence
 
-## Problem Statement
+## Summary
 
-When running agent-reviewer loops, we need a way to:
-1. Pipe reviewer feedback into an ongoing agent conversation
-2. Maintain conversation context across iterations
-3. Support multiple CLI runners (Claude Code, Codex)
-4. Enable visualization/streaming of agent output
-5. Optionally restart agents with fresh context
+Enable agent nodes to maintain conversation context across loop iterations by adding session management to the runner system.
 
-## Phase 0: Prototype CLI Commands
+**Key insight:** Session ID flows through the graph as data via feedback docks - no hidden state needed.
 
-Validate that session persistence works as expected with each CLI.
+## Architecture
 
-### Claude Code
+### Two-Port Agent Model
 
-```bash
-# Test 1: Start session with known ID
-SESSION_ID=$(uuidgen)
-claude --session-id "$SESSION_ID" -p "remember the number 42"
+Resumable agents expose two input ports:
 
-# Test 2: Resume with new prompt
-claude --resume "$SESSION_ID" -p "what number did I ask you to remember?"
-# Expected: Agent recalls "42"
-
-# Test 3: Streaming output
-claude --resume "$SESSION_ID" -p "count to 10 slowly" --output-format stream-json
-# Observe: JSONL output format
-
-# Test 4: Restart (new session)
-NEW_SESSION=$(uuidgen)
-claude --session-id "$NEW_SESSION" -p "what number did I ask you to remember?"
-# Expected: Agent has no memory of previous session
+```
+┌──────────────────────────────┐
+│     Coder Agent              │
+│     (claude-code)            │
+├──────────────────────────────┤
+│ ● taskPrompt      result ●   │
+│ ● iteratePrompt              │
+└──────────────────────────────┘
 ```
 
-### Codex
+- `taskPrompt`: Creates new session, starts work
+- `iteratePrompt`: Resumes existing session with `{ sessionId, feedback }`
+- `result`: Returns `{ sessionId, output }` for downstream nodes
 
-```bash
-# Test 1: Start session (ID assigned automatically)
-codex exec "remember the number 42" --json
-# Note: Need to capture session ID from output
+### Loop Wiring
 
-# Test 2: Resume with session ID
-codex resume <SESSION_ID> "what number did I ask you to remember?"
-# Expected: Agent recalls "42"
-
-# Test 3: JSONL streaming
-codex exec "count to 10" --json
-# Observe: JSONL output format
 ```
-
-**Key difference:** Claude Code allows setting session ID upfront (`--session-id`), Codex assigns it and you capture from output.
-
-### Phase 0 Results (Validated 2024-12-29)
-
-All tests passed. Key findings:
-
-#### Claude Code
-
-| Test | Command | Result |
-|------|---------|--------|
-| Start with ID | `claude --session-id "$UUID" -p "remember 42"` | ✅ Works |
-| Resume + prompt | `claude --resume "$UUID" -p "what number?"` | ✅ Recalled "42" |
-| Streaming | `--output-format stream-json --verbose` | ✅ JSONL output |
-| Restart | New UUID = fresh context | ✅ No memory |
-
-**Note:** `--output-format stream-json` requires `--verbose` flag.
-
-**JSONL Schema (Claude Code):**
-```json
-{"type":"system","subtype":"init","session_id":"...","tools":[...],"model":"..."}
-{"type":"assistant","message":{"id":"...","content":[{"type":"text","text":"..."}],"usage":{...}}}
-{"type":"result","subtype":"success","duration_ms":...,"result":"...","total_cost_usd":...}
+┌─────────────────────────────────────────────────────────────────┐
+│  Loop Container                                                 │
+│                                                                 │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐       │
+│  │ taskPrompt ─┼────►│   Coder     │────►│  Reviewer   │       │
+│  │ iteratePrompt◄────│   Agent     │     │   Agent     │       │
+│  └─────────────┘     └─────────────┘     └─────────────┘       │
+│         ▲                   │                   │               │
+│         │                   │                   │               │
+│  ┌──────┴──────┐            │                   │               │
+│  │ session     │◄───────────┘                   │               │
+│  │ (feedback)  │  { sessionId, output }         │               │
+│  └─────────────┘                                │               │
+│         │                                       │               │
+│         └──────► { sessionId, feedback } ◄──────┘               │
+│                                                                 │
+│  ┌─────────────┐                                                │
+│  │ continue    │◄─────────────────── approved (boolean)         │
+│  └─────────────┘                                                │
+└─────────────────────────────────────────────────────────────────┘
 ```
-
-#### Codex
-
-| Test | Command | Result |
-|------|---------|--------|
-| Start + capture ID | `codex exec "remember 73" --json` | ✅ Works, `thread_id` in output |
-| Resume + prompt | `codex exec resume "$THREAD_ID" "what number?"` | ✅ Recalled "73" |
-| Resume + JSON | `codex exec resume ... --json` | ❌ Not supported |
-
-**Note:** Codex requires git repo or `--skip-git-repo-check`. Resume doesn't support `--json` flag.
-
-**JSONL Schema (Codex):**
-```json
-{"type":"thread.started","thread_id":"019b6dbb-041d-7463-964f-a43fb7f8fbcd"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"..."}}
-{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"..."}}
-{"type":"turn.completed","usage":{"input_tokens":...,"output_tokens":...}}
-```
-
-#### Key Differences Summary
-
-| Feature | Claude Code | Codex |
-|---------|-------------|-------|
-| Set session ID upfront | ✅ `--session-id` | ❌ Auto-assigned |
-| Session ID field | `session_id` | `thread_id` |
-| Resume syntax | `--resume <id> -p "..."` | `exec resume <id> "..."` |
-| Streaming on start | ✅ `--output-format stream-json --verbose` | ✅ `--json` |
-| Streaming on resume | ✅ Same flags work | ❌ No `--json` on resume |
-| Git repo required | No | Yes (or `--skip-git-repo-check`) |
 
 ---
 
-## Design Decision: Agent Awareness Model
+## Implementation Plan
 
-### Option A: Implicit Resume (Agent Unaware)
+### Phase 1: Agent Types & Runner Updates
 
-The agent doesn't know it's in a loop. Orchestrator just resumes with feedback.
+**Files to modify:**
+- `packages/server/src/engine/agents/types.ts`
+- `packages/server/src/engine/agents/claude-code.ts`
+- `packages/server/src/engine/agents/codex.ts`
+- `packages/server/src/engine/agents/openai.ts`
+- `packages/server/src/engine/agents/gemini-cli.ts`
 
-```
-Orchestrator                          Agent
-    |                                   |
-    |--- start session (task) --------->|
-    |<-- result ------------------------|
-    |                                   |
-    |--- resume (feedback) ------------>|  # Agent sees this as continuation
-    |<-- result ------------------------|
-    |                                   |
-```
-
-**Pros:**
-- Simple - no special agent behavior needed
-- Works with any agent/system prompt
-- Natural conversation flow
-
-**Cons:**
-- Agent can't distinguish "initial task" from "iteration feedback"
-- May behave inconsistently (e.g., re-explain context unnecessarily)
-- No explicit "done" signal from agent
-
-### Option B: Explicit Ports (initialPrompt / iteratePrompt)
-
-Two separate entry points with different semantics.
+#### 1.1 Extend AgentConfig
 
 ```typescript
-interface ReentrantRunner {
-  // Start new task, returns session ID
-  initialPrompt(task: string): Promise<{ sessionId: string, result: AgentResult }>
+// packages/server/src/engine/agents/types.ts
+interface AgentConfig {
+  runner: RunnerType;
+  model?: string;
+  prompt: string;
+  cwd: string;
+  inputValues?: Record<string, unknown>;
 
-  // Continue with feedback on existing session
-  iteratePrompt(sessionId: string, feedback: string): Promise<AgentResult>
+  // NEW: Session management
+  sessionId?: string;       // Resume this session
+  createSession?: boolean;  // Create new session, return ID
 }
 ```
 
-Agent receives different framing:
-- `initialPrompt`: "You are starting a new task: {task}"
-- `iteratePrompt`: "Reviewer feedback on your previous work: {feedback}"
-
-**Pros:**
-- Agent knows context (first attempt vs. iteration)
-- Can behave differently (e.g., be more concise on iterations)
-- Explicit API for orchestrator
-
-**Cons:**
-- Requires system prompt or message framing changes
-- More complex implementation
-- May feel artificial to agent
-
-### Option C: Hybrid - Implicit Resume + Framing Convention
-
-Use implicit resume, but establish a message framing convention.
-
-**Cons:**
-- Relies on agent following convention (may drift)
-- Less type-safe than explicit ports
-
-### Option D: Explicit Two-Port Model (Recommended)
-
-Each resumable agent exposes two input ports:
-
-```
-                          ┌─────────────────────────┐
-                          │      Coder Agent        │
-                          │                         │
-      task ──────────────►│ taskPrompt              │
-                          │         (creates new    │
-                          │          session)       │
-                          │                         │
-                          │                         │──────► result
-                          │                         │
-      feedback ──────────►│ iteratePrompt           │
-                          │         (resumes        │
-                          │          session)       │
-                          └─────────────────────────┘
-```
-
-#### Port Definitions
-
-**Coder Agent:**
-```typescript
-interface CoderAgent {
-  // Inputs
-  taskPrompt: InputPort<string>      // Creates new session, starts work
-  iteratePrompt: InputPort<string>   // Resumes session with feedback
-
-  // Outputs
-  result: OutputPort<{
-    sessionId: string
-    output: string
-    artifacts: Artifact[]  // files changed, etc.
-  }>
-}
-```
-
-**Reviewer Agent:**
-```typescript
-interface ReviewerAgent {
-  // Inputs
-  submission: InputPort<{
-    sessionId: string
-    output: string
-    artifacts: Artifact[]
-  }>
-
-  // Outputs
-  feedback: OutputPort<string>    // Critique to send back
-  approved: OutputPort<boolean>   // Breaks the loop when true
-}
-```
-
-#### Full Loop Wiring
-
-```
-                    ┌─────────────────┐
-     task ─────────►│ taskPrompt      │
-                    │                 │
-                    │   Coder Agent   │─────► result ─────┐
-                    │                 │                   │
-          ┌────────►│ iteratePrompt   │                   │
-          │         └─────────────────┘                   │
-          │                                               │
-          │                                               ▼
-          │                                     ┌─────────────────┐
-          │                                     │   submission    │
-          │                                     │                 │
-          │         feedback ◄──────────────────│ Reviewer Agent  │
-          │                                     │                 │
-          │                                     │    approved ────┼────► done
-          │                                     └─────────────────┘
-          │                                               │
-          │                                               │
-          └───────────── (if not approved) ◄──────────────┘
-```
-
-#### How It Maps to CLI
-
-```bash
-# When taskPrompt receives data:
-SESSION_ID=$(uuidgen)
-claude --session-id "$SESSION_ID" -p "$task" --output-format stream-json --verbose
-
-# When iteratePrompt receives data:
-# (sessionId comes from previous result)
-claude --resume "$SESSION_ID" -p "$feedback" --output-format stream-json --verbose
-```
-
-#### Why Two Ports?
-
-1. **Visual clarity**: In a graph editor, you see exactly where task vs feedback connects
-2. **Type safety**: Different input types can have different schemas
-3. **Session lifecycle**: `taskPrompt` creates session, `iteratePrompt` requires existing session
-4. **Loop detection**: Graph can validate that loops go through `iteratePrompt`, not `taskPrompt`
-
-#### State Management
-
-The `sessionId` flows through the graph as data:
-
-```
-taskPrompt ──► Coder ──► { sessionId, result } ──► Reviewer ──► { sessionId, feedback }
-                                                                        │
-                                                                        ▼
-                                                              iteratePrompt (with sessionId)
-```
-
-The orchestrator doesn't need to track session state - it flows through the edges.
-
-#### Alternative: Single Port with Tagged Union
-
-```typescript
-interface CoderAgent {
-  // Single input port
-  input: InputPort<
-    | { type: 'task', task: string }
-    | { type: 'iterate', sessionId: string, feedback: string }
-  >
-
-  result: OutputPort<{ sessionId: string, output: string }>
-}
-```
-
-**Pros:** Simpler port model
-**Cons:** Less visual clarity, harder to wire in graph editor
-
----
-
-## Recommendation
-
-Use **Option D (Explicit Two-Port Model)** for the graph/flow architecture.
-
-```typescript
-// Each resumable agent node exposes:
-interface ResumableAgentNode {
-  // Input ports
-  taskPrompt: InputPort<string>                           // Creates session
-  iteratePrompt: InputPort<{ sessionId: string, feedback: string }>  // Resumes
-
-  // Output port
-  result: OutputPort<{
-    sessionId: string
-    output: string
-    artifacts?: Artifact[]
-  }>
-}
-```
-
-This gives:
-- **Visual clarity**: Clear wiring in graph editor
-- **Session flows as data**: No hidden state in orchestrator
-- **Type safety**: Ports have distinct schemas
-- **Natural loop semantics**: `taskPrompt` starts, `iteratePrompt` continues
-
----
-
-## Phase 1: Runner Abstraction
-
-Define a common interface that works across CLI backends.
+#### 1.2 Extend AgentResult
 
 ```typescript
 interface AgentResult {
-  sessionId: string
-  output: string
-  // For streaming
-  stream?: AsyncIterable<StreamChunk>
-}
+  success: boolean;
+  output: string;
+  structuredOutput?: unknown;
+  error?: string;
 
-interface StreamChunk {
-  type: 'token' | 'tool_call' | 'tool_result' | 'turn_complete'
-  content: string
+  // NEW: Session info
+  sessionId?: string;
 }
-
-interface RunnerConfig {
-  runner: 'claude-code' | 'codex'
-  model?: string
-  workingDirectory?: string
-  systemPrompt?: string
-}
-
-interface ReentrantRunner {
-  start(task: string): Promise<AgentResult>
-  iterate(sessionId: string, feedback: string): Promise<AgentResult>
-  restart(): string  // returns new session ID
-}
-
-function createRunner(config: RunnerConfig): ReentrantRunner
 ```
 
----
-
-## Phase 2: CLI-Specific Implementations
-
-### Claude Code Runner
+#### 1.3 Update Claude Code Runner
 
 ```typescript
-class ClaudeCodeRunner implements ReentrantRunner {
-  async start(task: string): Promise<AgentResult> {
-    const sessionId = uuidv4()
-    const result = await this.exec([
-      '--session-id', sessionId,
-      '-p', `TASK: ${task}`,
-      '--output-format', 'stream-json',
-      '--verbose'  // Required for stream-json
-    ])
-    return { sessionId, ...result }
+// packages/server/src/engine/agents/claude-code.ts
+async function runClaudeCli(config: AgentConfig): Promise<AgentResult> {
+  const args: string[] = ['--print', '--output-format', 'json'];
+
+  let sessionId = config.sessionId;
+
+  if (config.sessionId) {
+    // Resume existing session
+    args.push('--resume', config.sessionId);
+  } else if (config.createSession) {
+    // Create new session
+    sessionId = crypto.randomUUID();
+    args.push('--session-id', sessionId);
   }
 
-  async iterate(sessionId: string, feedback: string): Promise<AgentResult> {
-    const result = await this.exec([
-      '--resume', sessionId,
-      '-p', `REVIEWER FEEDBACK: ${feedback}`,
-      '--output-format', 'stream-json',
-      '--verbose'  // Required for stream-json
-    ])
-    return { sessionId, ...result }
+  args.push('-p', config.prompt);
+
+  if (config.model) {
+    args.push('--model', config.model);
   }
 
-  restart(): string {
-    return uuidv4()
-  }
+  // ... existing spawn logic ...
+
+  return {
+    success: true,
+    output: result,
+    sessionId,  // Return session ID
+  };
 }
 ```
 
-### Codex Runner
+#### 1.4 Update Codex Runner
 
 ```typescript
-class CodexRunner implements ReentrantRunner {
-  async start(task: string): Promise<AgentResult> {
-    const result = await this.exec([
-      'exec',
-      `TASK: ${task}`,
-      '--json',
-      '--skip-git-repo-check'  // Required outside git repos
-    ])
-    // Parse thread_id from first JSONL line: {"type":"thread.started","thread_id":"..."}
-    const sessionId = this.extractThreadId(result.rawOutput)
-    return { sessionId, ...result }
-  }
+// packages/server/src/engine/agents/codex.ts
+async function runCodexCli(config: AgentConfig): Promise<AgentResult> {
+  let args: string[];
+  let sessionId = config.sessionId;
 
-  async iterate(sessionId: string, feedback: string): Promise<AgentResult> {
-    // NOTE: --json not supported on resume, output is plain text
-    const result = await this.exec([
-      'exec', 'resume', sessionId,
-      `REVIEWER FEEDBACK: ${feedback}`
-    ])
-    return { sessionId, ...result }
-  }
-
-  private extractThreadId(jsonlOutput: string): string {
-    const firstLine = jsonlOutput.split('\n')[0]
-    const parsed = JSON.parse(firstLine)
-    if (parsed.type === 'thread.started') {
-      return parsed.thread_id
-    }
-    throw new Error('Could not find thread_id in Codex output')
-  }
-}
-```
-
-**Limitation:** Codex `resume` doesn't support `--json`, so streaming visualization only works on first iteration.
-
----
-
-## Phase 3: Streaming & Visualization
-
-Parse the JSONL output for real-time visualization.
-
-### Claude Code stream-json format
-
-```json
-{"type":"assistant","message":{"content":"I'll help..."}}
-{"type":"tool_use","name":"Read","input":{...}}
-{"type":"tool_result","content":"..."}
-{"type":"result","subtype":"success","message":"..."}
-```
-
-### Codex --json format
-
-```json
-{"type":"message","content":"..."}
-// TBD - need to capture actual format
-```
-
-### Visualization Interface
-
-```typescript
-interface SessionVisualizer {
-  // Full history
-  getHistory(sessionId: string): Turn[]
-
-  // Live streaming
-  onChunk(sessionId: string, callback: (chunk: StreamChunk) => void): Unsubscribe
-
-  // Iteration tracking
-  getIterationCount(sessionId: string): number
-}
-```
-
----
-
-## Phase 4: Orchestrator Integration
-
-The loop becomes:
-
-```typescript
-const runner = createRunner({ runner: 'claude-code' })
-const visualizer = createVisualizer()
-
-let { sessionId, result } = await runner.start(task)
-visualizer.attach(sessionId)
-
-while (!done) {
-  const feedback = await reviewer.evaluate(result)
-
-  if (feedback.shouldRestart) {
-    sessionId = runner.restart()
-    result = await runner.start(task)  // or modified task
-  } else if (feedback.approved) {
-    done = true
+  if (config.sessionId) {
+    // Resume - note: no --json support on resume
+    args = ['exec', 'resume', config.sessionId, config.prompt];
   } else {
-    result = await runner.iterate(sessionId, feedback.comments)
+    // New session
+    args = ['exec', config.prompt, '--json', '--skip-git-repo-check'];
   }
+
+  // ... spawn logic ...
+
+  // Extract thread_id from JSON output if new session
+  if (!config.sessionId) {
+    sessionId = extractThreadId(stdout);
+  }
+
+  return {
+    success: true,
+    output: result,
+    sessionId,
+  };
 }
+
+function extractThreadId(jsonlOutput: string): string | undefined {
+  const firstLine = jsonlOutput.split('\n')[0];
+  try {
+    const parsed = JSON.parse(firstLine);
+    if (parsed.type === 'thread.started') {
+      return parsed.thread_id;
+    }
+  } catch {}
+  return undefined;
+}
+```
+
+#### 1.5 Update OpenAI Runner (Conversation History)
+
+OpenAI Chat Completions API doesn't have server-side sessions, but we can achieve resumability by:
+1. **Storing conversation history** in the session state
+2. **Passing full history** on each call
+
+```typescript
+// packages/server/src/engine/agents/openai.ts
+
+interface ConversationMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+interface OpenAISession {
+  messages: ConversationMessage[];
+}
+
+export const openaiRunner: AgentRunner = {
+  name: 'openai',
+
+  async execute(config: AgentConfig): Promise<AgentResult> {
+    let messages: ConversationMessage[] = [];
+    let sessionData: OpenAISession | undefined;
+
+    // If resuming, parse the session to get conversation history
+    if (config.sessionId && config.conversationHistory) {
+      sessionData = config.conversationHistory as OpenAISession;
+      messages = [...sessionData.messages];
+    }
+
+    // Add the new user message
+    messages.push({ role: 'user', content: config.prompt });
+
+    // Make API call with full history
+    const response = await callOpenAI(config.model, messages);
+
+    // Add assistant response to history
+    messages.push({ role: 'assistant', content: response.content });
+
+    // Generate session ID if new session
+    const sessionId = config.sessionId || crypto.randomUUID();
+
+    return {
+      success: true,
+      output: response.content,
+      sessionId,
+      // Return updated conversation history for next iteration
+      conversationHistory: { messages },
+    };
+  },
+};
+```
+
+**Key difference from CLI runners:** OpenAI session state includes the full `messages` array, not just an ID. The executor must pass this through the feedback dock.
+
+#### 1.6 Update OpenAI Runner (Alternative: Assistants API)
+
+OpenAI's Assistants API has native threads with server-side persistence:
+
+```typescript
+// Alternative: Use OpenAI Assistants API for true server-side sessions
+async function executeWithAssistants(config: AgentConfig): Promise<AgentResult> {
+  const openai = new OpenAI();
+
+  let threadId = config.sessionId;
+
+  if (!threadId) {
+    // Create new thread
+    const thread = await openai.beta.threads.create();
+    threadId = thread.id;
+  }
+
+  // Add message to thread
+  await openai.beta.threads.messages.create(threadId, {
+    role: 'user',
+    content: config.prompt,
+  });
+
+  // Run the assistant
+  const run = await openai.beta.threads.runs.createAndPoll(threadId, {
+    assistant_id: config.assistantId,  // Would need to configure this
+  });
+
+  // Get the response
+  const messages = await openai.beta.threads.messages.list(threadId);
+  const lastMessage = messages.data[0];
+
+  return {
+    success: true,
+    output: lastMessage.content[0].text.value,
+    sessionId: threadId,  // Thread ID persists on OpenAI servers
+  };
+}
+```
+
+**Trade-offs:**
+- **Chat Completions + History:** Client-side state, works with any model, more control
+- **Assistants API:** Server-side state, simpler session management, requires assistant setup
+
+#### 1.7 Update Gemini CLI Runner
+
+Need to check if Gemini CLI supports session persistence. If not, may need to use the Gemini API directly with conversation history (similar to OpenAI Chat Completions approach).
+
+```bash
+# Check gemini CLI for session flags
+gemini --help | grep -i session
+gemini --help | grep -i resume
+gemini --help | grep -i thread
+```
+
+If no CLI support, implement conversation history approach like OpenAI.
+
+---
+
+### Phase 2: Executor Support for Two-Port Agents
+
+**Files to modify:**
+- `packages/server/src/engine/executor.ts`
+- `packages/core/src/workflow-types.ts` (if needed)
+
+#### 2.1 Detect Which Input Port Has Data
+
+```typescript
+// In executeAgentNode or similar
+function executeAgentNode(node: WorkflowNode, inputs: Record<string, unknown>) {
+  const taskPrompt = inputs['taskPrompt'] as string | undefined;
+  const iteratePrompt = inputs['iteratePrompt'] as {
+    sessionId: string;
+    feedback: string;
+  } | undefined;
+
+  let prompt: string;
+  let sessionId: string | undefined;
+  let createSession = false;
+
+  if (iteratePrompt?.sessionId) {
+    // Resume mode
+    sessionId = iteratePrompt.sessionId;
+    prompt = iteratePrompt.feedback;
+  } else if (taskPrompt) {
+    // Start mode
+    createSession = true;
+    prompt = taskPrompt;
+  } else {
+    // Fallback to legacy single-prompt mode
+    prompt = node.data.prompt as string;
+  }
+
+  return runAgent({
+    ...node.data,
+    prompt,
+    sessionId,
+    createSession,
+  });
+}
+```
+
+#### 2.2 Output Session ID in Result
+
+Ensure the agent node's output includes `sessionId` so it can flow to feedback docks:
+
+```typescript
+// After agent execution
+const result = await runAgent(config);
+
+return {
+  outputs: {
+    result: {
+      sessionId: result.sessionId,
+      output: result.output,
+    }
+  }
+};
 ```
 
 ---
 
-## Open Questions
+### Phase 3: Designer UI (Optional but Recommended)
 
-1. ~~**Codex session ID extraction:** How to reliably get session ID from `codex exec` output?~~
-   **RESOLVED:** Parse `thread_id` from first JSONL line: `{"type":"thread.started","thread_id":"..."}`
+**Files to modify:**
+- `packages/designer/src/nodes/BaseNode.tsx`
+- `packages/designer/src/components/ConfigPanel.tsx`
 
-2. ~~**Codex resume + JSON:** Does `codex resume` support `--json` flag for streaming?~~
-   **RESOLVED:** No, `--json` not supported on resume. Codex resume output is plain text only.
+#### 3.1 Show Two Input Ports for Resumable Agents
 
-3. **Stream-json input:** Claude Code has `--input-format stream-json` - could enable true long-running process model. Worth exploring?
+When an agent node has `resumable: true` or defines both `taskPrompt` and `iteratePrompt` inputs:
 
-4. **System prompt injection:** Should we inject loop-awareness into system prompt, or rely purely on message framing?
+```tsx
+// In BaseNode.tsx port rendering
+{node.data.inputs?.map(input => (
+  <Handle
+    type="target"
+    position={Position.Left}
+    id={`input:${input.name}`}
+    // ... styling
+  />
+))}
+```
 
-5. **Error handling:** What happens if resume fails (session expired, corrupted)?
+#### 3.2 Config Panel Option
 
-6. **Codex streaming on resume:** Since `--json` doesn't work with resume, how do we stream Codex output on iterations? Options:
-   - Accept plain text output on resume (parse manually)
-   - Request feature from Codex team
-   - Use different approach for Codex (long-running process?)
+Add a checkbox or toggle in ConfigPanel:
+- "Enable session persistence" → adds `taskPrompt`/`iteratePrompt` ports
 
 ---
 
-## Next Steps
+### Phase 4: Test Workflow
 
-- [x] Phase 0: Run prototype commands, validate assumptions
-- [x] Document actual JSONL schemas from both CLIs
-- [ ] Decide on Option A/B/C for agent awareness
-- [ ] Implement Phase 1 runner abstraction
-- [ ] Build minimal orchestrator for testing
+Create a test workflow to validate the implementation:
+
+```yaml
+# workflows/test-resumable-agent.yaml
+version: 2
+metadata:
+  name: Resumable Agent Test
+  description: Test agent session persistence in a loop
+
+nodes:
+  - id: trigger
+    type: trigger
+    position: { x: 100, y: 200 }
+    data:
+      label: Start
+      triggerType: manual
+
+  - id: loop
+    type: loop
+    position: { x: 300, y: 100 }
+    style: { width: 600, height: 400 }
+    data:
+      label: Review Loop
+      maxIterations: 5
+      dockSlots:
+        - name: iteration
+          type: iteration
+        - name: session
+          type: feedback
+        - name: continue
+          type: continue
+
+  - id: coder
+    type: agent
+    parentId: loop
+    position: { x: 50, y: 80 }
+    data:
+      label: Coder
+      runner: claude-code
+      model: sonnet
+      inputs:
+        - name: taskPrompt
+          type: string
+        - name: iteratePrompt
+          type: json
+      outputs:
+        - name: result
+          type: json
+
+  - id: reviewer
+    type: agent
+    parentId: loop
+    position: { x: 300, y: 80 }
+    data:
+      label: Reviewer
+      runner: claude-code
+      model: haiku
+      prompt: |
+        Review the coder's work. Output JSON:
+        { "approved": boolean, "feedback": "..." }
+      outputSchema: |
+        { "type": "object", "properties": { "approved": { "type": "boolean" }, "feedback": { "type": "string" } } }
+
+edges:
+  - id: e1
+    source: trigger
+    target: loop
+    targetHandle: input:task
+  - id: e2
+    source: loop
+    target: coder
+    sourceHandle: dock:iteration:output
+    targetHandle: input:taskPrompt
+  - id: e3
+    source: loop
+    target: coder
+    sourceHandle: dock:session:prev
+    targetHandle: input:iteratePrompt
+  - id: e4
+    source: coder
+    target: loop
+    sourceHandle: output:result
+    targetHandle: dock:session:current
+  - id: e5
+    source: coder
+    target: reviewer
+    sourceHandle: output:result
+  - id: e6
+    source: reviewer
+    target: loop
+    sourceHandle: output:approved
+    targetHandle: dock:continue:input
+```
+
+---
+
+## Task Checklist
+
+### Phase 1: Runner Updates
+- [ ] Add `sessionId`, `createSession`, `conversationHistory` to `AgentConfig`
+- [ ] Add `sessionId`, `conversationHistory` to `AgentResult`
+- [ ] Update `claude-code.ts` with `--session-id` / `--resume` flags
+- [ ] Update `codex.ts` with resume support and thread_id extraction
+- [ ] Update `openai.ts` with conversation history support
+- [ ] Check `gemini-cli` for session support, implement if available
+- [ ] Add unit tests for session persistence
+
+### Phase 2: Executor Updates
+- [ ] Detect `taskPrompt` vs `iteratePrompt` input
+- [ ] Pass `sessionId` / `createSession` / `conversationHistory` to runner
+- [ ] Include `sessionId` and `conversationHistory` in node output
+- [ ] Handle conversation history in feedback dock for OpenAI
+
+### Phase 3: Designer UI
+- [ ] Show multiple input ports on agent nodes
+- [ ] Add "resumable" toggle to agent config panel
+- [ ] Update port rendering for two-input agents
+
+### Phase 4: Integration Tests
+- [ ] Test workflow: `workflows/test-resumable-claude-code.yaml`
+- [ ] Test workflow: `workflows/test-resumable-codex.yaml`
+- [ ] Test workflow: `workflows/test-resumable-openai.yaml`
+- [ ] Verify session persists across iterations for each runner
+- [ ] Verify restart works (new session on loop restart)
+
+---
+
+## CLI Reference (Validated)
+
+### Claude Code
+```bash
+# Start new session
+claude --session-id "$UUID" -p "task..." --output-format json
+
+# Resume session
+claude --resume "$UUID" -p "feedback..." --output-format json
+```
+
+### Codex
+```bash
+# Start new session (thread_id in output)
+codex exec "task..." --json --skip-git-repo-check
+
+# Resume session (no --json support)
+codex exec resume "$THREAD_ID" "feedback..."
+```
+
+**Note:** Codex resume doesn't support `--json`, so streaming only works on first iteration.
+
+### OpenAI API
+```typescript
+// Option 1: Conversation History (client-side state)
+// Store messages array in session, pass full history each call
+const messages = [...previousMessages, { role: 'user', content: prompt }];
+const response = await openai.chat.completions.create({ model, messages });
+
+// Option 2: Assistants API (server-side state)
+// Thread ID persists on OpenAI servers
+const thread = await openai.beta.threads.create();
+await openai.beta.threads.messages.create(thread.id, { role: 'user', content: prompt });
+const run = await openai.beta.threads.runs.createAndPoll(thread.id, { assistant_id });
+```
+
+**Recommendation:** Start with conversation history approach - simpler, no assistant setup required.
+
+---
+
+## Test Workflows
+
+Created test workflows for each runner type:
+
+| Runner | Workflow | Notes |
+|--------|----------|-------|
+| claude-code | `workflows/test-resumable-claude-code.yaml` | Uses `--session-id` / `--resume` |
+| codex | `workflows/test-resumable-codex.yaml` | Uses `thread_id` from output |
+| openai | `workflows/test-resumable-openai.yaml` | Uses conversation history |

@@ -195,3 +195,8 @@ Component workflows (version 2) also include an `interface:` section defining in
 4. Use template variables to pass outputs between nodes
 5. Validate with `pnpm run shodan -- validate workflows/your-file.yaml`
 6. Test with `pnpm run shodan -- run workflows/your-file.yaml`
+
+## Additional Documentation
+
+- **plan/plan.md**: Project roadmap with pending features and backlog
+- **KNOWN_ISSUES.md**: Known bugs and limitations with potential fixes

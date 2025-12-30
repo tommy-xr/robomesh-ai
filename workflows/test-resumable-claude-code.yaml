@@ -1,0 +1,157 @@
+version: 2
+metadata:
+  name: Resumable Agent Test (Claude Code)
+  description: Tests session persistence with claude-code runner in a coder-reviewer loop
+
+nodes:
+  - id: trigger
+    type: trigger
+    position: { x: 50, y: 200 }
+    data:
+      nodeType: trigger
+      label: Start
+      triggerType: manual
+      outputs:
+        - name: task
+          type: string
+          default: "Write a function that calculates fibonacci numbers"
+
+  # Loop container for coder-reviewer cycle
+  - id: review-loop
+    type: loop
+    position: { x: 250, y: 50 }
+    style: { width: 700, height: 350 }
+    data:
+      label: Review Loop
+      nodeType: loop
+      maxIterations: 3
+      inputs:
+        - name: task
+          type: string
+      dockSlots:
+        - name: iteration
+          type: iteration
+          valueType: number
+          label: Iteration
+        - name: session
+          type: feedback
+          valueType: json
+          label: Session
+        - name: continue
+          type: continue
+          valueType: boolean
+          label: Continue
+
+  # Coder agent with two input ports
+  - id: coder
+    type: agent
+    parentId: review-loop
+    extent: parent
+    position: { x: 50, y: 80 }
+    data:
+      nodeType: agent
+      label: Coder (Claude Code)
+      runner: claude-code
+      model: sonnet
+      # This prompt is used when starting fresh (taskPrompt)
+      prompt: "{{ inputs.task }}"
+      inputs:
+        - name: task
+          type: string
+          description: Initial coding task
+        - name: iterate
+          type: json
+          description: Resume with reviewer feedback
+      outputs:
+        - name: result
+          type: json
+
+  # Reviewer agent
+  - id: reviewer
+    type: agent
+    parentId: review-loop
+    extent: parent
+    position: { x: 350, y: 80 }
+    data:
+      nodeType: agent
+      label: Reviewer (Claude Code)
+      runner: claude-code
+      model: haiku
+      prompt: |
+        Review the following code submission:
+
+        {{ inputs.submission }}
+
+        Respond with JSON in this exact format:
+        {"approved": true/false, "feedback": "your feedback here"}
+
+        Approve if the code is correct and handles edge cases.
+        Reject with specific feedback if improvements are needed.
+      outputSchema: |
+        {
+          "type": "object",
+          "properties": {
+            "approved": { "type": "boolean" },
+            "feedback": { "type": "string" }
+          },
+          "required": ["approved", "feedback"],
+          "additionalProperties": false
+        }
+      inputs:
+        - name: submission
+          type: string
+      outputs:
+        - name: approved
+          type: boolean
+          extract:
+            type: json_path
+            pattern: "$.approved"
+        - name: feedback
+          type: string
+          extract:
+            type: json_path
+            pattern: "$.feedback"
+
+edges:
+  # Trigger -> Loop (pass the task)
+  - id: trigger-to-loop
+    source: trigger
+    target: review-loop
+    sourceHandle: "output:task"
+    targetHandle: "input:task"
+
+  # Loop task input -> Coder task input (first iteration)
+  - id: loop-task-to-coder
+    source: review-loop
+    target: coder
+    sourceHandle: "input:task:internal"
+    targetHandle: "input:task"
+
+  # Dock: session.prev -> Coder iterate input (subsequent iterations)
+  - id: dock-session-to-coder
+    source: review-loop
+    target: coder
+    sourceHandle: "dock:session:prev"
+    targetHandle: "input:iterate"
+
+  # Coder result -> Dock: session.current (store for next iteration)
+  - id: coder-to-dock-session
+    source: coder
+    target: review-loop
+    sourceHandle: "output:result"
+    targetHandle: "dock:session:current"
+
+  # Coder result -> Reviewer submission
+  - id: coder-to-reviewer
+    source: coder
+    target: reviewer
+    sourceHandle: "output:result"
+    targetHandle: "input:submission"
+
+  # Reviewer approved -> Dock: continue (controls loop)
+  # Note: We negate this - loop continues when NOT approved
+  - id: reviewer-to-dock-continue
+    source: reviewer
+    target: review-loop
+    sourceHandle: "output:approved"
+    targetHandle: "dock:continue:input"
