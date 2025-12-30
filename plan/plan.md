@@ -53,24 +53,35 @@ Enable agents to maintain conversation context across loop iterations via sessio
 - [ ] Update `openai.ts` with conversation history support
 
 **Phase 2: Executor Updates**
-- [ ] Detect `taskPrompt` vs `iteratePrompt` input ports
-- [ ] Pass session config to runners, include in node output
+- [ ] Check for `sessionId` input to determine resume vs create
+- [ ] Output `sessionId` as dedicated port
 
 **Phase 3: Designer UI**
-- [ ] Show two input ports for resumable agents
-- [ ] Add "resumable" toggle in agent config panel
+- [ ] Show `sessionId` input/output ports on agent nodes
 
 **Phase 4: Integration Tests**
 - [ ] Test workflows for each runner (`test-resumable-*.yaml`)
 
+**Future: Retry Gate Primitive** (see [retry-gate.md](./retry-gate.md))
+- [ ] Gate node for multi-stage validation with upstream retry
+
 ### Other
+- Implement plan/re-entrant-runner.md
+- Implement plan/retry-gate.md
+- Save and view workflow results
 - Add CI badge
 - Add screenshot of tool
 - Add refactor -> extract tool. Highlight an area, pull the inputs/outputs, and extract to a component
-- Add accordions to component
+- Add accordions to component picker UI
 - Implement component library plan (component-library.md)
 - Fix agent models - we might want to make an API request and query each tool respectively?
 - Coercing agent output to JSON to fit output requirements - can we rely on the agents to do that, or does it require a GPT call to coalesce?
 - Add clearly defined input/output for the agent blocks - the inputs can be used as template variables, and the output can be added to the prompt we send the agent. We can then wire the output directly elsewhere
 - Consider adding "unsaved changes" warning when navigating away from edited component
 - Component versioning/history
+- 90 degree edges?
+- Auto-layout?
+- Higher-order components
+- --working-directory (run workflows in other projects)
+- Planning workflow
+- 

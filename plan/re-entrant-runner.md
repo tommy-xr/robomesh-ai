@@ -8,48 +8,71 @@ Enable agent nodes to maintain conversation context across loop iterations by ad
 
 ## Architecture
 
-### Two-Port Agent Model
+### Session-Aware Agent Model
 
-Resumable agents expose two input ports:
+Resumable agents have a dedicated `sessionId` port:
 
 ```
 ┌──────────────────────────────┐
 │     Coder Agent              │
 │     (claude-code)            │
 ├──────────────────────────────┤
-│ ● taskPrompt      result ●   │
-│ ● iteratePrompt              │
+│ ● prompt       sessionId ●   │
+│ ● sessionId    output    ●   │
 └──────────────────────────────┘
 ```
 
-- `taskPrompt`: Creates new session, starts work
-- `iteratePrompt`: Resumes existing session with `{ sessionId, feedback }`
-- `result`: Returns `{ sessionId, output }` for downstream nodes
+**Inputs:**
+- `prompt`: The task or feedback text (same port for both)
+- `sessionId`: Optional - if connected, resume that session
+
+**Outputs:**
+- `sessionId`: The session ID (newly created or passed through)
+- `output`: The agent's response
+
+**Behavior:**
+- `sessionId` not connected → create new session, return new ID
+- `sessionId` connected → resume that session, pass ID through
 
 ### Loop Wiring
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Loop Container                                                 │
-│                                                                 │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐       │
-│  │ taskPrompt ─┼────►│   Coder     │────►│  Reviewer   │       │
-│  │ iteratePrompt◄────│   Agent     │     │   Agent     │       │
-│  └─────────────┘     └─────────────┘     └─────────────┘       │
-│         ▲                   │                   │               │
-│         │                   │                   │               │
-│  ┌──────┴──────┐            │                   │               │
-│  │ session     │◄───────────┘                   │               │
-│  │ (feedback)  │  { sessionId, output }         │               │
-│  └─────────────┘                                │               │
-│         │                                       │               │
-│         └──────► { sessionId, feedback } ◄──────┘               │
+┌──────────────────────────────────────────────────────────────────┐
+│  Loop Container                                                  │
+│                                                                  │
+│  ┌───────────────────┐     ┌─────────────┐     ┌─────────────┐  │
+│  │ prompt ──────────►│     │             │────►│             │  │
+│  │                   │─────│   Coder     │     │  Reviewer   │  │
+│  │ sessionId ◄──────►│     │   Agent     │     │   Agent     │  │
+│  │ (feedback dock)   │     │             │     │             │  │
+│  └───────────────────┘     └──────┬──────┘     └──────┬──────┘  │
+│                                   │                   │         │
+│                             sessionId              feedback     │
+│                                   │                   │         │
+│  ┌─────────────┐                  │                   │         │
+│  │ session     │◄─────────────────┘                   │         │
+│  │ (feedback)  │                                      │         │
+│  └──────┬──────┘                                      │         │
+│         │                                             │         │
+│         └──────► sessionId + feedback ◄───────────────┘         │
+│                  (combined for next iteration)                  │
 │                                                                 │
 │  ┌─────────────┐                                                │
 │  │ continue    │◄─────────────────── approved (boolean)         │
 │  └─────────────┘                                                │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Iteration 1:**
+1. Coder receives `prompt` (task), no `sessionId` → creates session "abc"
+2. Coder outputs `sessionId: "abc"` and `output: "..."`
+3. Reviewer evaluates, outputs `feedback` and `approved: false`
+4. Session feedback dock stores `{ sessionId: "abc", feedback: "..." }`
+
+**Iteration 2+:**
+1. Coder receives `prompt` (feedback from reviewer) AND `sessionId: "abc"`
+2. Coder resumes session "abc" with the feedback
+3. Loop continues until approved
 
 ---
 
@@ -286,39 +309,22 @@ If no CLI support, implement conversation history approach like OpenAI.
 
 ---
 
-### Phase 2: Executor Support for Two-Port Agents
+### Phase 2: Executor Support for Session-Aware Agents
 
 **Files to modify:**
 - `packages/server/src/engine/executor.ts`
 - `packages/core/src/workflow-types.ts` (if needed)
 
-#### 2.1 Detect Which Input Port Has Data
+#### 2.1 Check for sessionId Input
 
 ```typescript
 // In executeAgentNode or similar
 function executeAgentNode(node: WorkflowNode, inputs: Record<string, unknown>) {
-  const taskPrompt = inputs['taskPrompt'] as string | undefined;
-  const iteratePrompt = inputs['iteratePrompt'] as {
-    sessionId: string;
-    feedback: string;
-  } | undefined;
+  const prompt = inputs['prompt'] as string | node.data.prompt;
+  const sessionId = inputs['sessionId'] as string | undefined;
 
-  let prompt: string;
-  let sessionId: string | undefined;
-  let createSession = false;
-
-  if (iteratePrompt?.sessionId) {
-    // Resume mode
-    sessionId = iteratePrompt.sessionId;
-    prompt = iteratePrompt.feedback;
-  } else if (taskPrompt) {
-    // Start mode
-    createSession = true;
-    prompt = taskPrompt;
-  } else {
-    // Fallback to legacy single-prompt mode
-    prompt = node.data.prompt as string;
-  }
+  // If sessionId is provided, resume; otherwise create new
+  const createSession = !sessionId;
 
   return runAgent({
     ...node.data,
@@ -329,9 +335,9 @@ function executeAgentNode(node: WorkflowNode, inputs: Record<string, unknown>) {
 }
 ```
 
-#### 2.2 Output Session ID in Result
+#### 2.2 Output Session ID Separately
 
-Ensure the agent node's output includes `sessionId` so it can flow to feedback docks:
+Agent node outputs `sessionId` as its own port:
 
 ```typescript
 // After agent execution
@@ -339,13 +345,13 @@ const result = await runAgent(config);
 
 return {
   outputs: {
-    result: {
-      sessionId: result.sessionId,
-      output: result.output,
-    }
+    sessionId: result.sessionId,  // Dedicated port
+    output: result.output,        // Dedicated port
   }
 };
 ```
+
+This allows explicit wiring of `sessionId` between agents.
 
 ---
 
@@ -488,9 +494,9 @@ edges:
 - [ ] Add unit tests for session persistence
 
 ### Phase 2: Executor Updates
-- [ ] Detect `taskPrompt` vs `iteratePrompt` input
+- [ ] Check for `sessionId` input port to determine resume vs create
 - [ ] Pass `sessionId` / `createSession` / `conversationHistory` to runner
-- [ ] Include `sessionId` and `conversationHistory` in node output
+- [ ] Output `sessionId` as dedicated port (not bundled with output)
 - [ ] Handle conversation history in feedback dock for OpenAI
 
 ### Phase 3: Designer UI
@@ -544,6 +550,48 @@ const run = await openai.beta.threads.runs.createAndPoll(thread.id, { assistant_
 ```
 
 **Recommendation:** Start with conversation history approach - simpler, no assistant setup required.
+
+---
+
+## Advanced Patterns
+
+### Pattern A: Shared Session Across Sequential Loops
+
+For multi-stage validation (review → test → de-dup), wire `sessionId` between loops:
+
+```
+┌─ Review Loop ─────────────────────────┐
+│  Coder ──► Reviewer ──► approved?     │
+│    ▲           │                      │
+│    └─ feedback ┘                      │
+└──────────┬────────────────────────────┘
+           │
+     sessionId ──────────────────┐
+           │                     │
+           ▼                     ▼
+┌─ Test Loop ───────────────────────────┐
+│  Coder ◄── sessionId                  │
+│    ▲   ◄── "run tests and fix"        │
+│    │           │                      │
+│    └─ Tester ──┴──► passed?           │
+└───────────────────────────────────────┘
+           │
+           ▼
+        Done!
+```
+
+**Wiring:**
+- Loop 1 Coder: no `sessionId` input → creates new session "abc"
+- Loop 1 Coder outputs: `sessionId: "abc"`, `output: "..."`
+- Loop 2 Coder: receives `sessionId: "abc"` → resumes session
+- Session history maintained across all validation phases
+- Each loop is self-contained, no nesting required
+
+### Pattern B: Retry Gate Primitive (Future)
+
+See [retry-gate.md](./retry-gate.md) for detailed design.
+
+A gate node for flat multi-stage validation pipelines that can re-trigger upstream nodes on failure. Enables patterns like `Coder → Review → Test → Gate → done` with automatic retry.
 
 ---
 
