@@ -555,25 +555,82 @@ function InterfaceConfig({ node, onUpdate }: Omit<NodeConfigProps, 'rootDirector
 
 type ConstantValueType = 'boolean' | 'number' | 'string';
 
+/**
+ * Try to coerce a value to a new type
+ * Returns { success: true, value } if coercion worked, { success: false } otherwise
+ */
+function tryCoerceValue(
+  value: unknown,
+  fromType: ConstantValueType,
+  toType: ConstantValueType
+): { success: boolean; value?: boolean | number | string } {
+  if (fromType === toType) {
+    return { success: true, value: value as boolean | number | string };
+  }
+
+  // String -> Number: try to parse
+  if (fromType === 'string' && toType === 'number') {
+    const str = String(value).trim();
+    if (str === '') return { success: false };
+    const num = Number(str);
+    if (!isNaN(num)) {
+      return { success: true, value: num };
+    }
+    return { success: false };
+  }
+
+  // Number -> String: always works
+  if (fromType === 'number' && toType === 'string') {
+    return { success: true, value: String(value) };
+  }
+
+  // String -> Boolean: "true"/"false" or "1"/"0"
+  if (fromType === 'string' && toType === 'boolean') {
+    const str = String(value).toLowerCase().trim();
+    if (str === 'true' || str === '1') {
+      return { success: true, value: true };
+    }
+    if (str === 'false' || str === '0' || str === '') {
+      return { success: true, value: false };
+    }
+    return { success: false };
+  }
+
+  // Boolean -> String: always works
+  if (fromType === 'boolean' && toType === 'string') {
+    return { success: true, value: String(value) };
+  }
+
+  // Number -> Boolean: 0 = false, non-zero = true
+  if (fromType === 'number' && toType === 'boolean') {
+    return { success: true, value: Boolean(value) };
+  }
+
+  // Boolean -> Number: true = 1, false = 0
+  if (fromType === 'boolean' && toType === 'number') {
+    return { success: true, value: value ? 1 : 0 };
+  }
+
+  return { success: false };
+}
+
+function getDefaultValue(type: ConstantValueType): boolean | number | string {
+  switch (type) {
+    case 'boolean': return false;
+    case 'number': return 0;
+    case 'string': return '';
+  }
+}
+
 function ConstantConfig({ node, onUpdate }: Omit<NodeConfigProps, 'rootDirectory'>) {
   const valueType = (node.data.valueType as ConstantValueType) || 'string';
   const value = node.data.value;
 
-  // Handle type change - reset value to appropriate default
+  // Handle type change - try to coerce value, otherwise reset to default
   const handleTypeChange = (newType: ConstantValueType) => {
-    let newValue: boolean | number | string;
-    switch (newType) {
-      case 'boolean':
-        newValue = false;
-        break;
-      case 'number':
-        newValue = 0;
-        break;
-      case 'string':
-      default:
-        newValue = '';
-        break;
-    }
+    const coercion = tryCoerceValue(value, valueType, newType);
+    const newValue = coercion.success ? coercion.value! : getDefaultValue(newType);
+
     onUpdate(node.id, {
       valueType: newType,
       value: newValue,
