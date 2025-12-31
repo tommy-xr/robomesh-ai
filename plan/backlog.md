@@ -35,10 +35,9 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - [ ] **Undo/redo support**: Proper undo/redo for loop operations (add child, move, resize)
 - [ ] **Arrow indicators for port direction**: Visual cues showing input vs output direction on dock slots
 
-### Logic Operators (see operators.md)
-**Phase 2**: Boolean logic (`not`, `and`, `or`) - purple rectangular nodes
-**Phase 3**: Comparisons (`equals`, `not-equals`, `greater-than`, etc.) - orange
-**Phase 4**: Utilities (`switch`, `coalesce`, arithmetic, string ops)
+### Logic Operators (see [operators.md](./operators.md))
+- [ ] Add `not`, `and`, `or` sidebar primitives (function nodes with preset configs)
+- [ ] Consider compact visual styling for operators
 
 ### Retry Gate Primitive (see [retry-gate.md](./retry-gate.md))
 - [ ] Gate node for multi-stage validation with upstream retry
