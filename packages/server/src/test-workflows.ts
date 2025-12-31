@@ -12,7 +12,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'js-yaml';
 import type { WorkflowSchema } from '@shodan/core';
-import { executeWorkflowSchema, type ExecutionOptions, type WorkflowResult, type NodeResult } from './engine/executor.js';
+import { executeWorkflowSchema, type ExecuteOptions, type ExecuteResult, type NodeResult } from './engine/executor.js';
+import { loadWorkflow } from './engine/workflow-loader.js';
 
 const WORKFLOWS_DIR = path.resolve(import.meta.dirname, '../../../workflows');
 const PROJECT_ROOT = path.resolve(WORKFLOWS_DIR, '..');
@@ -21,21 +22,22 @@ const PROJECT_ROOT = path.resolve(WORKFLOWS_DIR, '..');
 // Test Helpers
 // ============================================================================
 
-interface RunOptions extends ExecutionOptions {
+interface RunOptions extends ExecuteOptions {
   rootDirectory?: string;
 }
 
-async function runWorkflow(filename: string, options?: RunOptions): Promise<WorkflowResult> {
+async function runWorkflow(filename: string, options?: RunOptions): Promise<ExecuteResult> {
   const content = await fs.readFile(path.join(WORKFLOWS_DIR, filename), 'utf-8');
   const schema = yaml.load(content) as WorkflowSchema;
   if (options?.rootDirectory) {
     schema.metadata.rootDirectory = options.rootDirectory;
   }
-  return executeWorkflowSchema(schema, options);
+  const { rootDirectory: _, ...executeOptions } = options || {};
+  return executeWorkflowSchema(schema, executeOptions);
 }
 
-function getNode(result: WorkflowResult, nodeId: string): NodeResult {
-  const node = result.results.find(r => r.nodeId === nodeId);
+function getNode(result: ExecuteResult, nodeId: string): NodeResult {
+  const node = result.results.find((r: NodeResult) => r.nodeId === nodeId);
   assert.ok(node, `Should have ${nodeId} result`);
   return node;
 }
@@ -64,8 +66,8 @@ function assertNodeFailed(node: NodeResult) {
   assert.strictEqual(node.status, 'failed', `${node.nodeId} should be failed`);
 }
 
-function assertNodeNotExecuted(result: WorkflowResult, nodeId: string) {
-  const node = result.results.find(r => r.nodeId === nodeId);
+function assertNodeNotExecuted(result: ExecuteResult, nodeId: string) {
+  const node = result.results.find((r: NodeResult) => r.nodeId === nodeId);
   assert.strictEqual(node, undefined, `${nodeId} should not have executed`);
 }
 
