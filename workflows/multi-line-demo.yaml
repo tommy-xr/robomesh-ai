@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Multi-line Script Demo
   description: Demonstrates multi-line shell scripts with loops, variables, and conditionals
-
 nodes:
   - id: trigger_1
     type: trigger
-    position: { x: 100, y: 150 }
+    position:
+      x: 100
+      "y": 150
     data:
       label: Start
       nodeType: trigger
@@ -20,10 +21,11 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: shell_loop
     type: shell
-    position: { x: 300, y: 50 }
+    position:
+      x: 300
+      "y": 50
     data:
       label: For Loop
       nodeType: shell
@@ -33,10 +35,29 @@ nodes:
           total=$((total + i))
         done
         echo "Sum: $total"
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell_conditional
     type: shell
-    position: { x: 300, y: 150 }
+    position:
+      x: 300
+      "y": 150
     data:
       label: Conditional
       nodeType: shell
@@ -47,10 +68,29 @@ nodes:
         else
           echo "No YAML files found"
         fi
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell_heredoc
     type: shell
-    position: { x: 300, y: 250 }
+    position:
+      x: 300
+      "y": 250
     data:
       label: Here-doc
       nodeType: shell
@@ -61,10 +101,29 @@ nodes:
         User: $(whoami)
         === End ===
         EOF
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell_summary
     type: shell
-    position: { x: 550, y: 150 }
+    position:
+      x: 550
+      "y": 150
     data:
       label: Summary
       nodeType: shell
@@ -75,11 +134,27 @@ nodes:
           type: string
         - name: heredoc
           type: string
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       script: |
         echo "Multi-line scripts completed successfully"
         echo "Loop result: {{ inputs.loop }}"
         echo "Conditional result: {{ inputs.conditional }}"
-
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger_1

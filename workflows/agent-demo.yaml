@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Agent Demo
   description: Tests agent runners with a simple greeting prompt
-
 nodes:
   - id: trigger_1
     type: trigger
-    position: { x: 100, y: 150 }
+    position:
+      x: 100
+      "y": 150
     data:
       label: Start
       nodeType: trigger
@@ -20,30 +21,71 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: claude_agent
     type: agent
-    position: { x: 350, y: 100 }
+    position:
+      x: 350
+      "y": 100
     data:
       label: Claude Greeting
       nodeType: agent
       runner: claude-code
       model: sonnet
-      prompt: "Say hello in exactly 5 words. Nothing else."
-
+      prompt: Say hello in exactly 5 words. Nothing else.
+      inputs:
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
+      outputs:
+        - name: output
+          type: string
+          description: Agent response text
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: codex_agent
     type: agent
-    position: { x: 350, y: 200 }
+    position:
+      x: 350
+      "y": 200
     data:
       label: Codex Greeting
       nodeType: agent
       runner: codex
       model: gpt-5.2-codex
-      prompt: "Say hello in exactly 5 words. Nothing else."
-
+      prompt: Say hello in exactly 5 words. Nothing else.
+      inputs:
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
+      outputs:
+        - name: output
+          type: string
+          description: Agent response text
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: combine_results
     type: shell
-    position: { x: 600, y: 150 }
+    position:
+      x: 600
+      "y": 150
     data:
       label: Combine Results
       nodeType: shell
@@ -52,7 +94,24 @@ nodes:
         echo ""
         echo "Claude: {{ claude_greeting.output }}"
         echo "Codex:  {{ codex_greeting.output }}"
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger_1

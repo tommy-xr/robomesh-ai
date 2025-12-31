@@ -9,6 +9,12 @@
   transition: all 0.2s ease;
 }
 
+/* Wider nodes for types with more ports */
+.custom-node.agent,
+.custom-node.component {
+  min-width: 200px;
+}
+
 .custom-node.selected {
   box-shadow: 0 0 0 2px var(--accent), var(--glow-pink);
 }

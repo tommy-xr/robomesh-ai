@@ -5,7 +5,9 @@ metadata:
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 50, y: 100 }
+    position:
+      x: 50
+      "y": 100
     data:
       nodeType: trigger
       label: Start
@@ -21,7 +23,9 @@ nodes:
           type: json
   - id: step1
     type: shell
-    position: { x: 200, y: 100 }
+    position:
+      x: 200
+      "y": 100
     data:
       nodeType: shell
       label: Step 1 (2s)
@@ -29,9 +33,29 @@ nodes:
         echo "Starting step 1..."
         sleep 2
         echo "Step 1 complete"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: step2
     type: shell
-    position: { x: 400, y: 100 }
+    position:
+      x: 400
+      "y": 100
     data:
       nodeType: shell
       label: Step 2 (1s)
@@ -39,9 +63,29 @@ nodes:
         echo "Starting step 2..."
         sleep 1
         echo "Step 2 complete"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: step3
     type: shell
-    position: { x: 600, y: 100 }
+    position:
+      x: 600
+      "y": 100
     data:
       nodeType: shell
       label: Step 3 (1.5s)
@@ -49,6 +93,24 @@ nodes:
         echo "Starting step 3..."
         sleep 1.5
         echo "Step 3 complete"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger

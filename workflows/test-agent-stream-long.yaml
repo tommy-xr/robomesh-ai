@@ -2,11 +2,12 @@ version: 1
 metadata:
   name: Agent Streaming Test (Long Task)
   description: Test agent streaming with Claude Code and Codex agents
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 50, y: 200 }
+    position:
+      x: 50
+      "y": 200
     data:
       nodeType: trigger
       label: Start
@@ -20,10 +21,11 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: claude-agent
     type: agent
-    position: { x: 300, y: 50 }
+    position:
+      x: 300
+      "y": 50
     data:
       nodeType: agent
       label: Claude Code
@@ -39,13 +41,28 @@ nodes:
       inputs:
         - name: input
           type: string
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
       outputs:
         - name: output
           type: string
-
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: codex-agent
     type: agent
-    position: { x: 300, y: 300 }
+    position:
+      x: 300
+      "y": 300
     data:
       nodeType: agent
       label: Codex
@@ -61,17 +78,29 @@ nodes:
       inputs:
         - name: input
           type: string
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
       outputs:
         - name: output
           type: string
-
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger
     target: claude-agent
     sourceHandle: output:text
     targetHandle: input:input
-
   - id: e2
     source: trigger
     target: codex-agent

@@ -2,11 +2,12 @@ version: 1
 metadata:
   name: Agent Streaming Test
   description: Test real-time agent output streaming with Claude Code
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 50, y: 100 }
+    position:
+      x: 50
+      "y": 100
     data:
       nodeType: trigger
       label: Start
@@ -20,16 +21,37 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: agent
     type: agent
-    position: { x: 250, y: 100 }
+    position:
+      x: 250
+      "y": 100
     data:
       nodeType: agent
       label: Claude Code
       runner: claude-code
-      prompt: "Count from 1 to 5 slowly, with a brief explanation for each number. Format each as 'Number X: [explanation]' on its own line."
-
+      prompt: >-
+        Count from 1 to 5 slowly, with a brief explanation for each number. Format each as 'Number X: [explanation]' on
+        its own line.
+      inputs:
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
+      outputs:
+        - name: output
+          type: string
+          description: Agent response text
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger

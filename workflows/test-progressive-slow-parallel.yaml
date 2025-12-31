@@ -5,7 +5,9 @@ metadata:
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 50, y: 150 }
+    position:
+      x: 50
+      "y": 150
     data:
       nodeType: trigger
       label: Start
@@ -21,7 +23,9 @@ nodes:
           type: json
   - id: fast
     type: shell
-    position: { x: 200, y: 50 }
+    position:
+      x: 200
+      "y": 50
     data:
       nodeType: shell
       label: Fast (0.5s)
@@ -29,9 +33,29 @@ nodes:
         echo "Fast branch..."
         sleep 0.5
         echo "Fast done"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: medium
     type: shell
-    position: { x: 200, y: 150 }
+    position:
+      x: 200
+      "y": 150
     data:
       nodeType: shell
       label: Medium (1.5s)
@@ -39,9 +63,29 @@ nodes:
         echo "Medium branch..."
         sleep 1.5
         echo "Medium done"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: slow
     type: shell
-    position: { x: 200, y: 250 }
+    position:
+      x: 200
+      "y": 250
     data:
       nodeType: shell
       label: Slow (3s)
@@ -49,13 +93,51 @@ nodes:
         echo "Slow branch..."
         sleep 3
         echo "Slow done"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: merge
     type: shell
-    position: { x: 450, y: 150 }
+    position:
+      x: 450
+      "y": 150
     data:
       nodeType: shell
       label: Merge
       script: echo "All branches complete!"
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger

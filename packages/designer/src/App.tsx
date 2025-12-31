@@ -12,6 +12,7 @@ import {
 } from '@xyflow/react';
 import type { Connection, Node, Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { getNodePortDefaults } from '@shodan/core';
 
 import { nodeTypes } from './nodes';
 import type { BaseNodeData, NodeType } from './nodes';
@@ -293,6 +294,9 @@ function Flow() {
           },
         }];
       } else {
+        // Get default ports for this node type (if any)
+        const portDefaults = getNodePortDefaults(type);
+
         newNodes = [{
           id: getNodeId(),
           type,
@@ -302,6 +306,11 @@ function Flow() {
           data: {
             label: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
             nodeType: type,
+            // Apply default inputs/outputs from node-defaults if available
+            ...(portDefaults && {
+              inputs: portDefaults.inputs,
+              outputs: portDefaults.outputs,
+            }),
           },
         }];
       }

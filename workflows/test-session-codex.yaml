@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Codex Session Persistence Test
   description: Tests Codex agent session persistence by creating a session and then resuming it
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 100, y: 150 }
+    position:
+      x: 100
+      "y": 150
     data:
       label: Start
       nodeType: trigger
@@ -20,11 +21,11 @@ nodes:
           type: string
         - name: params
           type: json
-
-  # First agent call - creates a session
   - id: first_call
     type: agent
-    position: { x: 350, y: 150 }
+    position:
+      x: 350
+      "y": 150
     data:
       label: First Call
       nodeType: agent
@@ -34,34 +35,52 @@ nodes:
         - name: trigger
           type: string
           required: false
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
       outputs:
         - name: output
           type: string
         - name: sessionId
           type: string
-
-  # Second agent call - resumes the session
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: second_call
     type: agent
-    position: { x: 600, y: 150 }
+    position:
+      x: 600
+      "y": 150
     data:
       label: Second Call
       nodeType: agent
       runner: codex
-      prompt: "What was the secret code I told you to remember? Just say the code, nothing else."
+      prompt: What was the secret code I told you to remember? Just say the code, nothing else.
       inputs:
         - name: sessionId
           type: string
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
       outputs:
         - name: output
           type: string
         - name: sessionId
           type: string
-
-  # Verify the result
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: verify
     type: shell
-    position: { x: 850, y: 150 }
+    position:
+      x: 850
+      "y": 150
     data:
       label: Verify
       nodeType: shell
@@ -81,31 +100,41 @@ nodes:
           type: string
         - name: second_output
           type: string
-
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
-  # Trigger -> First call
   - id: e1
     source: trigger
     target: first_call
-    sourceHandle: "output:timestamp"
-    targetHandle: "input:trigger"
-
-  # First call sessionId -> Second call sessionId
+    sourceHandle: output:timestamp
+    targetHandle: input:trigger
   - id: e2
     source: first_call
     target: second_call
-    sourceHandle: "output:sessionId"
-    targetHandle: "input:sessionId"
-
-  # Both outputs -> Verify
+    sourceHandle: output:sessionId
+    targetHandle: input:sessionId
   - id: e3
     source: first_call
     target: verify
-    sourceHandle: "output:output"
-    targetHandle: "input:first_output"
-
+    sourceHandle: output:output
+    targetHandle: input:first_output
   - id: e4
     source: second_call
     target: verify
-    sourceHandle: "output:output"
-    targetHandle: "input:second_output"
+    sourceHandle: output:output
+    targetHandle: input:second_output

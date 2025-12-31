@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Session Persistence Loop Test
   description: Tests agent session persistence in a loop - agent counts from 42 to 52 across iterations
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 100, y: 150 }
+    position:
+      x: 100
+      "y": 150
     data:
       label: Start
       nodeType: trigger
@@ -20,12 +21,14 @@ nodes:
           type: string
         - name: params
           type: json
-
-  # Loop that runs 10 times with session persistence
   - id: count-loop
     type: loop
-    position: { x: 300, y: 50 }
-    style: { width: 500, height: 300 }
+    position:
+      x: 300
+      "y": 50
+    style:
+      width: 500
+      height: 300
     data:
       label: Counting Loop
       nodeType: loop
@@ -50,13 +53,13 @@ nodes:
           type: feedback
           valueType: string
           label: Session ID
-
-  # Shell node that determines continue and builds prompt
   - id: controller
     type: shell
     parentId: count-loop
     extent: parent
-    position: { x: 50, y: 50 }
+    position:
+      x: 50
+      "y": 50
     data:
       label: Controller
       nodeType: shell
@@ -82,24 +85,40 @@ nodes:
           required: false
         - name: iteration
           type: number
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: prompt_text
           type: string
           extract:
             type: regex
-            pattern: 'PROMPT: (.+)'
+            pattern: "PROMPT: (.+)"
         - name: should_continue
           type: boolean
           extract:
             type: regex
-            pattern: 'CONTINUE=(true|false)'
-
-  # The counter agent inside the loop
+            pattern: CONTINUE=(true|false)
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: counter-agent
     type: agent
     parentId: count-loop
     extent: parent
-    position: { x: 250, y: 50 }
+    position:
+      x: 250
+      "y": 50
     data:
       label: Counter Agent
       nodeType: agent
@@ -112,16 +131,23 @@ nodes:
         - name: sessionId
           type: string
           required: false
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
       outputs:
         - name: output
           type: string
         - name: sessionId
           type: string
-
-  # Verify result at the end
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: verify
     type: shell
-    position: { x: 850, y: 150 }
+    position:
+      x: 850
+      "y": 150
     data:
       label: Verify Final Number
       nodeType: shell
@@ -139,67 +165,66 @@ nodes:
       inputs:
         - name: final_output
           type: string
-
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
-  # Trigger -> Loop
   - id: trigger-to-loop
     source: trigger
     target: count-loop
-    sourceHandle: "output:timestamp"
-    targetHandle: "input:trigger"
-
-  # Loop input -> Controller (internal edge to start internal execution)
+    sourceHandle: output:timestamp
+    targetHandle: input:trigger
   - id: loop-trigger-to-controller
     source: count-loop
     target: controller
-    sourceHandle: "input:trigger:internal"
-    targetHandle: "input:trigger"
-
-  # Dock: iteration -> controller
+    sourceHandle: input:trigger:internal
+    targetHandle: input:trigger
   - id: dock-iter-to-controller
     source: count-loop
     target: controller
-    sourceHandle: "dock:iteration:output"
-    targetHandle: "input:iteration"
-
-  # Controller prompt -> counter-agent prompt
+    sourceHandle: dock:iteration:output
+    targetHandle: input:iteration
   - id: controller-to-agent
     source: controller
     target: counter-agent
-    sourceHandle: "output:prompt_text"
-    targetHandle: "input:prompt_text"
-
-  # Dock: sessionId.prev -> counter-agent (feedback from previous iteration)
+    sourceHandle: output:prompt_text
+    targetHandle: input:prompt_text
   - id: dock-session-prev-to-agent
     source: count-loop
     target: counter-agent
-    sourceHandle: "dock:sessionId:prev"
-    targetHandle: "input:sessionId"
-
-  # counter-agent sessionId -> Dock: sessionId.current (store for next iteration)
+    sourceHandle: dock:sessionId:prev
+    targetHandle: input:sessionId
   - id: agent-to-dock-session
     source: counter-agent
     target: count-loop
-    sourceHandle: "output:sessionId"
-    targetHandle: "dock:sessionId:current"
-
-  # Controller continue -> Dock: continue
+    sourceHandle: output:sessionId
+    targetHandle: dock:sessionId:current
   - id: controller-to-dock-continue
     source: controller
     target: count-loop
-    sourceHandle: "output:should_continue"
-    targetHandle: "dock:continue:input"
-
-  # counter-agent output -> Loop final_output (via internal handle)
+    sourceHandle: output:should_continue
+    targetHandle: dock:continue:input
   - id: agent-to-loop-output
     source: counter-agent
     target: count-loop
-    sourceHandle: "output:output"
-    targetHandle: "output:final_output:internal"
-
-  # Loop output -> Verify
+    sourceHandle: output:output
+    targetHandle: output:final_output:internal
   - id: loop-to-verify
     source: count-loop
     target: verify
-    sourceHandle: "output:final_output"
-    targetHandle: "input:final_output"
+    sourceHandle: output:final_output
+    targetHandle: input:final_output

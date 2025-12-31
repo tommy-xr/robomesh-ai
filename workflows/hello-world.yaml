@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Hello World
   description: A simple test workflow that echoes a greeting
-
 nodes:
   - id: trigger_1
     type: trigger
-    position: { x: 100, y: 100 }
+    position:
+      x: 100
+      "y": 100
     data:
       label: Start
       nodeType: trigger
@@ -20,16 +21,34 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: shell_1
     type: shell
-    position: { x: 300, y: 100 }
+    position:
+      x: 300
+      "y": 100
     data:
       label: Say Hello
       nodeType: shell
       commands:
         - echo "Hello from Shodan!"
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger_1
