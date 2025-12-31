@@ -53,6 +53,7 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 
 ### Other
 - Some workflows missing edges (the loop ones particularly)
+- When the workflow is running, and a new workflow is imported, the current running session isn't stopped
 - Implement plan/retry-gate.md
 - Save and view workflow results
 - Add CI badge
