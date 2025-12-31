@@ -48,32 +48,10 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 **Phase 3**: Comparisons (`equals`, `not-equals`, `greater-than`, etc.) - orange
 **Phase 4**: Utilities (`switch`, `coalesce`, arithmetic, string ops)
 
-### Re-entrant Runner / Agent Session Persistence (see re-entrant-runner.md)
-
-Enable agents to maintain conversation context across loop iterations via session management.
-
-**Phase 1: Runner Updates** ✅
-- [x] Add `sessionId`, `createSession`, `conversationHistory` to `AgentConfig`/`AgentResult`
-- [x] Update `claude-code.ts` with `--session-id` / `--resume` flags
-- [x] Update `codex.ts` with resume support and `thread_id` extraction (JSONL parsing)
-- [x] Update `openai.ts` with conversation history support (serialized as sessionId)
-
-**Phase 2: Executor Updates** ✅
-- [x] Check for `sessionId` input to determine resume vs create
-- [x] Output `sessionId` as dedicated port
-
-**Phase 3: Designer UI** ✅
-- [x] Show `sessionId` input/output ports on agent nodes (via workflow YAML definition)
-
-**Phase 4: Integration Tests** ✅
-- [x] Test workflows for each runner (`test-session-*.yaml`)
-- [x] Added to test suite with `TEST_AGENTS=1` flag
-
-**Future: Retry Gate Primitive** (see [retry-gate.md](./retry-gate.md))
+### Retry Gate Primitive (see [retry-gate.md](./retry-gate.md))
 - [ ] Gate node for multi-stage validation with upstream retry
 
 ### Other
-- Implement plan/re-entrant-runner.md
 - Implement plan/retry-gate.md
 - Save and view workflow results
 - Add CI badge
@@ -91,4 +69,3 @@ Enable agents to maintain conversation context across loop iterations via sessio
 - Higher-order components
 - --working-directory (run workflows in other projects)
 - Planning workflow
-- 

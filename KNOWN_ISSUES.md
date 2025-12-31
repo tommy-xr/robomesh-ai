@@ -28,3 +28,18 @@ There's no custom delete handler - just the default ReactFlow behavior (`deleteK
 - Add an `onNodesDelete` handler that converts child positions to absolute before removing parentId
 - Alternatively, delete child nodes along with the parent loop
 - Show a confirmation dialog when deleting loops with children
+
+## Designer - Loop Inner Node Status
+
+### Inner Loop Nodes Show "Pending" After Completion
+
+**Location**: `packages/designer/src/App.tsx` (execution status updates)
+
+When executing a workflow with loops, the nodes inside the loop container always show "pending" status even after the loop completes successfully. The loop container itself shows "completed", but child nodes (shell, agent, etc.) remain in pending state.
+
+**Root cause**: The executor only reports status for top-level nodes in the workflow results. Inner node executions happen within the loop executor and their status updates aren't propagated back to the UI.
+
+**Possible fixes**:
+- Add `innerNodeResults` to the loop execution result that includes status for each child node
+- Emit status updates via SSE/WebSocket during loop iteration
+- Show iteration-specific status in a collapsible panel on the loop node
