@@ -35,15 +35,25 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - [ ] **Undo/redo support**: Proper undo/redo for loop operations (add child, move, resize)
 - [ ] **Arrow indicators for port direction**: Visual cues showing input vs output direction on dock slots
 
-### Logic Operators (see operators.md)
-**Phase 2**: Boolean logic (`not`, `and`, `or`) - purple rectangular nodes
-**Phase 3**: Comparisons (`equals`, `not-equals`, `greater-than`, etc.) - orange
-**Phase 4**: Utilities (`switch`, `coalesce`, arithmetic, string ops)
+### Logic Operators (see [operators.md](./operators.md))
+- [ ] Add `not`, `and`, `or` sidebar primitives (function nodes with preset configs)
+- [ ] Consider compact visual styling for operators
 
 ### Retry Gate Primitive (see [retry-gate.md](./retry-gate.md))
 - [ ] Gate node for multi-stage validation with upstream retry
 
 ### Other
+- Workspace / orchestration of multiple flows:
+	- Get trigger conditions working
+	- Record results for a 'run'
+	- Cron trigger
+- Trigger: Add cli mode to manually trigger a workflow and report output on the CLI
+- Add a concept of tools - specifically, the ability to directly talk to an agent (ie, queue an additional prompt)
+- Implement plan/operators.md
+- Implement plan/output-visualization-improvements.
+- Add green grid background to designer - evoking like a circuit builder paradigm.
+- Fix the animation when output travels along the edges
+- Experiment with reactive paradigms - can we use our primitives or set to implement a 'first' logic node (multiple inputs a, b, c, and a single output - whichever value comes _first_ gets sent to output)
 - Header improvement: bread crumb UI showing working directory -> active workflow
 - Some workflows missing edges (the loop ones particularly)
 - When the workflow is running, and a new workflow is imported, the current running session isn't stopped
@@ -52,25 +62,19 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - Add CI badge
 - Add screenshot of tool
 - Add refactor -> extract tool. Highlight an area, pull the inputs/outputs, and extract to a component
-- Add accordions to component picker UI
-- Implement component library plan (component-library.md)
 - Fix agent models - we might want to make an API request and query each tool respectively?
 - Coercing agent output to JSON to fit output requirements - can we rely on the agents to do that, or does it require a GPT call to coalesce?
-- Add clearly defined input/output for the agent blocks - the inputs can be used as template variables, and the output can be added to the prompt we send the agent. We can then wire the output directly elsewhere
-- Consider adding "unsaved changes" warning when navigating away from edited component
-- Component versioning/history
-- 90 degree edges?
-- Auto-layout?
 - Higher-order components
 - --working-directory (run workflows in other projects)
 - Planning workflow
 - UX: Move workflow name, +new, and execution into header, to free up header (probably import/export via a drop down menu too)
-- [x] Rebrand to robomesh.ai
 
 - Deploy to robomesh.ai, w/o ability to run workflows
 - Set up to run locally - whats the best way to open UI from CLI?
-- Workspace / orchestration of multiple flows:
-	- Get trigger conditions working
-	- Record results for a 'run'
 
+- 3d view when running - flatten out the 'map' and overlay live terminal, output, etc in the third dimension
 
+- Implement component library plan (component-library.md)
+- Component versioning/history
+- 90 degree edges?
+- Auto-layout?
