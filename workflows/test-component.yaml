@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Test Component Workflow
   description: Tests using a workflow as a component
-
 nodes:
   - id: trigger-1
     type: trigger
-    position: { x: 100, y: 100 }
+    position:
+      x: 100
+      "y": 100
     data:
       nodeType: trigger
       label: Start
@@ -14,10 +15,21 @@ nodes:
       outputs:
         - name: text
           type: string
-
+        - name: timestamp
+          type: string
+          description: Trigger timestamp (ISO format)
+        - name: type
+          type: string
+          description: Trigger type (manual, cron, etc.)
+        - name: params
+          type: json
+          description: Additional trigger parameters
+      inputs: []
   - id: component-1
     type: component
-    position: { x: 300, y: 100 }
+    position:
+      x: 300
+      "y": 100
     data:
       nodeType: component
       label: Text Transform
@@ -28,10 +40,11 @@ nodes:
       outputs:
         - name: result
           type: string
-
   - id: shell-1
     type: shell
-    position: { x: 500, y: 100 }
+    position:
+      x: 500
+      "y": 100
     data:
       nodeType: shell
       label: Print Result
@@ -43,23 +56,35 @@ nodes:
           type: string
         - name: transformed
           type: string
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: output
           type: string
-
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger-1
     target: component-1
-    sourceHandle: "output:text"
-    targetHandle: "input:text"
+    sourceHandle: output:text
+    targetHandle: input:text
   - id: e2
     source: trigger-1
     target: shell-1
-    sourceHandle: "output:text"
-    targetHandle: "input:original"
+    sourceHandle: output:text
+    targetHandle: input:original
   - id: e3
     source: component-1
     target: shell-1
-    sourceHandle: "output:result"
-    targetHandle: "input:transformed"
+    sourceHandle: output:result
+    targetHandle: input:transformed

@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Nested Loop Test (i/j Pattern)
   description: Tests nested loops - outer loop (i) and inner loop (j)
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 50, y: 150 }
+    position:
+      x: 50
+      "y": 150
     data:
       nodeType: trigger
       label: Start
@@ -20,12 +21,14 @@ nodes:
           type: string
         - name: params
           type: json
-
-  # Outer loop (i = 1 to 3)
   - id: outer-loop
     type: loop
-    position: { x: 200, y: 50 }
-    style: { width: 700, height: 400 }
+    position:
+      x: 200
+      "y": 50
+    style:
+      width: 700
+      height: 400
     data:
       label: Outer Loop (i)
       nodeType: loop
@@ -53,14 +56,16 @@ nodes:
           type: feedback
           valueType: number
           label: Outer Count
-
-  # Inner loop (j = 1 to 2)
   - id: inner-loop
     type: loop
     parentId: outer-loop
     extent: parent
-    position: { x: 50, y: 50 }
-    style: { width: 500, height: 250 }
+    position:
+      x: 50
+      "y": 50
+    style:
+      width: 500
+      height: 250
     data:
       label: Inner Loop (j)
       nodeType: loop
@@ -90,13 +95,13 @@ nodes:
           type: feedback
           valueType: string
           label: Pair
-
-  # Inner node that prints i,j pairs
   - id: print-pair
     type: shell
     parentId: inner-loop
     extent: parent
-    position: { x: 50, y: 50 }
+    position:
+      x: 50
+      "y": 50
     data:
       nodeType: shell
       label: Print Pair
@@ -117,24 +122,40 @@ nodes:
           type: number
         - name: inner_max
           type: number
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: pair_str
           type: string
           extract:
             type: regex
-            pattern: 'Pair: (.+)'
+            pattern: "Pair: (.+)"
         - name: should_continue
           type: boolean
           extract:
             type: regex
-            pattern: 'CONTINUE_INNER=(true|false)'
-
-  # Control node for outer loop
+            pattern: CONTINUE_INNER=(true|false)
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: outer-control
     type: shell
     parentId: outer-loop
     extent: parent
-    position: { x: 200, y: 270 }
+    position:
+      x: 200
+      "y": 270
     data:
       nodeType: shell
       label: Check Outer
@@ -155,6 +176,10 @@ nodes:
           type: number
         - name: outer_max
           type: number
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: status
           type: string
@@ -164,75 +189,67 @@ nodes:
           type: boolean
           extract:
             type: regex
-            pattern: 'CONTINUE_OUTER=(true|false)'
-
+            pattern: CONTINUE_OUTER=(true|false)
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
-  # Trigger -> Outer Loop
   - id: trigger-to-outer
     source: trigger
     target: outer-loop
-    sourceHandle: "output:text"
-    targetHandle: "input:trigger"
-
-  # Outer loop iteration -> Inner loop input
+    sourceHandle: output:text
+    targetHandle: input:trigger
   - id: outer-i-to-inner
     source: outer-loop
     target: inner-loop
-    sourceHandle: "dock:i:output"
-    targetHandle: "input:i_value"
-
-  # Outer loop iteration -> Outer control
+    sourceHandle: dock:i:output
+    targetHandle: input:i_value
   - id: outer-i-to-control
     source: outer-loop
     target: outer-control
-    sourceHandle: "dock:i:output"
-    targetHandle: "input:i_value"
-
-  # Outer loop max -> Outer control (from internal input handle)
+    sourceHandle: dock:i:output
+    targetHandle: input:i_value
   - id: outer-max-to-control
     source: outer-loop
     target: outer-control
-    sourceHandle: "input:outer_max:internal"
-    targetHandle: "input:outer_max"
-
-  # Inner loop -> Inner node (j value)
+    sourceHandle: input:outer_max:internal
+    targetHandle: input:outer_max
   - id: inner-j-to-print
     source: inner-loop
     target: print-pair
-    sourceHandle: "dock:j:output"
-    targetHandle: "input:j_value"
-
-  # Inner loop -> Inner node (i value passthrough from internal input handle)
+    sourceHandle: dock:j:output
+    targetHandle: input:j_value
   - id: inner-i-to-print
     source: inner-loop
     target: print-pair
-    sourceHandle: "input:i_value:internal"
-    targetHandle: "input:i_value"
-
-  # Inner loop -> Inner node (max j from internal input handle)
+    sourceHandle: input:i_value:internal
+    targetHandle: input:i_value
   - id: inner-max-to-print
     source: inner-loop
     target: print-pair
-    sourceHandle: "input:inner_max:internal"
-    targetHandle: "input:inner_max"
-
-  # Inner node -> Inner loop continue
+    sourceHandle: input:inner_max:internal
+    targetHandle: input:inner_max
   - id: print-to-inner-continue
     source: print-pair
     target: inner-loop
-    sourceHandle: "output:should_continue"
-    targetHandle: "dock:continue_inner:input"
-
-  # Inner loop completion triggers outer control (sequence dependency)
+    sourceHandle: output:should_continue
+    targetHandle: dock:continue_inner:input
   - id: inner-to-control
     source: inner-loop
     target: outer-control
-    sourceHandle: "output:inner_results"
-    targetHandle: "input:trigger"
-
-  # Outer control -> Outer loop continue
+    sourceHandle: output:inner_results
+    targetHandle: input:trigger
   - id: control-to-outer-continue
     source: outer-control
     target: outer-loop
-    sourceHandle: "output:should_continue"
-    targetHandle: "dock:continue_outer:input"
+    sourceHandle: output:should_continue
+    targetHandle: dock:continue_outer:input

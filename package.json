@@ -17,7 +17,8 @@
     "packages/core",
     "packages/server",
     "packages/designer",
-    "packages/cli"
+    "packages/cli",
+    "packages/migrations"
   ],
   "devDependencies": {
     "concurrently": "^9.1.0"

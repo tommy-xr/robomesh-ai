@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Counter Loop Test (Dock-Based)
   description: Simple loop using dock slots for iteration control
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 100, y: 100 }
+    position:
+      x: 100
+      "y": 100
     data:
       nodeType: trigger
       label: Start
@@ -20,11 +21,11 @@ nodes:
           type: string
         - name: params
           type: json
-
-  # Constant node for target value
   - id: target-value
     type: constant
-    position: { x: 100, y: 200 }
+    position:
+      x: 100
+      "y": 200
     data:
       nodeType: constant
       label: Target
@@ -33,12 +34,14 @@ nodes:
       outputs:
         - name: value
           type: number
-
-  # Loop container with dock slots (no interface nodes needed)
   - id: count-loop
     type: loop
-    position: { x: 300, y: 50 }
-    style: { width: 500, height: 300 }
+    position:
+      x: 300
+      "y": 50
+    style:
+      width: 500
+      height: 300
     data:
       label: Count to Target
       nodeType: loop
@@ -52,7 +55,6 @@ nodes:
       outputs:
         - name: final_count
           type: number
-      # Dock slots for iteration control
       dockSlots:
         - name: iteration
           type: iteration
@@ -66,13 +68,13 @@ nodes:
           type: feedback
           valueType: number
           label: Count
-
-  # Counter node inside the loop
   - id: counter
     type: shell
     parentId: count-loop
     extent: parent
-    position: { x: 100, y: 50 }
+    position:
+      x: 100
+      "y": 50
     data:
       nodeType: shell
       label: Increment Counter
@@ -98,64 +100,66 @@ nodes:
           type: number
         - name: iteration
           type: number
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: count
           type: number
           extract:
             type: regex
-            pattern: 'Count = (\d+)'
+            pattern: Count = (\d+)
         - name: should_continue
           type: boolean
           extract:
             type: regex
-            pattern: 'CONTINUE=(true|false)'
-
+            pattern: CONTINUE=(true|false)
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
-  # Trigger -> Loop (connect to ensure loop runs after trigger)
   - id: trigger-to-loop
     source: trigger
     target: count-loop
-    sourceHandle: "output:text"
-    targetHandle: "input:trigger"
-
-  # Constant -> Loop target input
+    sourceHandle: output:text
+    targetHandle: input:trigger
   - id: constant-to-loop
     source: target-value
     target: count-loop
-    sourceHandle: "output:value"
-    targetHandle: "input:target"
-
-  # Loop input -> Counter (pass target from loop's internal input to inner node)
+    sourceHandle: output:value
+    targetHandle: input:target
   - id: loop-target-to-counter
     source: count-loop
     target: counter
-    sourceHandle: "input:target:internal"
-    targetHandle: "input:target"
-
-  # Dock: iteration output -> Counter
+    sourceHandle: input:target:internal
+    targetHandle: input:target
   - id: dock-iter-to-counter
     source: count-loop
     target: counter
-    sourceHandle: "dock:iteration:output"
-    targetHandle: "input:iteration"
-
-  # Dock: count.prev -> Counter (feedback from previous iteration)
+    sourceHandle: dock:iteration:output
+    targetHandle: input:iteration
   - id: dock-count-prev-to-counter
     source: count-loop
     target: counter
-    sourceHandle: "dock:count:prev"
-    targetHandle: "input:prev_count"
-
-  # Counter -> Dock: count.current (store for next iteration)
+    sourceHandle: dock:count:prev
+    targetHandle: input:prev_count
   - id: counter-to-dock-count
     source: counter
     target: count-loop
-    sourceHandle: "output:count"
-    targetHandle: "dock:count:current"
-
-  # Counter -> Dock: continue (control loop)
+    sourceHandle: output:count
+    targetHandle: dock:count:current
   - id: counter-to-dock-continue
     source: counter
     target: count-loop
-    sourceHandle: "output:should_continue"
-    targetHandle: "dock:continue:input"
+    sourceHandle: output:should_continue
+    targetHandle: dock:continue:input

@@ -2,60 +2,128 @@ version: 2
 metadata:
   name: Failure Stops Workflow Test
   description: Negative test - verify workflow stops when node fails without continueOnFailure
-
 nodes:
   - id: trigger-1
     type: trigger
-    position: { x: 100, y: 100 }
+    position:
+      x: 100
+      "y": 100
     data:
       label: Start
       nodeType: trigger
       triggerType: manual
-
+      inputs: []
+      outputs:
+        - name: timestamp
+          type: string
+          description: Trigger timestamp (ISO format)
+        - name: type
+          type: string
+          description: Trigger type (manual, cron, etc.)
+        - name: text
+          type: string
+          description: Input text (for manual triggers)
+        - name: params
+          type: json
+          description: Additional trigger parameters
   - id: shell-success
     type: shell
-    position: { x: 300, y: 100 }
+    position:
+      x: 300
+      "y": 100
     data:
       label: First Success
       nodeType: shell
       script: |
         echo "This should run successfully"
         exit 0
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell-fail
     type: shell
-    position: { x: 500, y: 100 }
+    position:
+      x: 500
+      "y": 100
     data:
       label: Failure (no continueOnFailure)
       nodeType: shell
-      # continueOnFailure is NOT set (defaults to false)
       script: |
         echo "This will fail and stop the workflow"
         exit 1
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell-should-not-run
     type: shell
-    position: { x: 700, y: 100 }
+    position:
+      x: 700
+      "y": 100
     data:
       label: Should Not Execute
       nodeType: shell
       script: |
         echo "ERROR: This node should never execute!"
         exit 1
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger-1
     target: shell-success
     sourceHandle: output:timestamp
     targetHandle: input:input
-
   - id: e2
     source: shell-success
     target: shell-fail
     sourceHandle: output:stdout
     targetHandle: input:input
-
   - id: e3
     source: shell-fail
     target: shell-should-not-run

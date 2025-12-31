@@ -2,11 +2,12 @@ version: 1
 metadata:
   name: Shell Streaming Test
   description: Test real-time shell output streaming
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 50, y: 100 }
+    position:
+      x: 50
+      "y": 100
     data:
       nodeType: trigger
       label: Start
@@ -20,10 +21,11 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: stream-test
     type: shell
-    position: { x: 250, y: 100 }
+    position:
+      x: 250
+      "y": 100
     data:
       nodeType: shell
       label: Streaming Output
@@ -37,7 +39,24 @@ nodes:
         echo "Line 4: Almost done..."
         sleep 0.5
         echo "Line 5: Complete!"
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger

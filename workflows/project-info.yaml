@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Project Info
   description: Gathers information about the current project
-
 nodes:
   - id: trigger_1
     type: trigger
-    position: { x: 100, y: 150 }
+    position:
+      x: 100
+      "y": 150
     data:
       label: Start
       nodeType: trigger
@@ -20,37 +21,95 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: shell_branch
     type: shell
-    position: { x: 300, y: 50 }
+    position:
+      x: 300
+      "y": 50
     data:
       label: Get Branch
       nodeType: shell
       commands:
         - git branch --show-current
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell_commit
     type: shell
-    position: { x: 300, y: 150 }
+    position:
+      x: 300
+      "y": 150
     data:
       label: Get Commit
       nodeType: shell
       commands:
         - git rev-parse --short HEAD
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell_files
     type: shell
-    position: { x: 300, y: 250 }
+    position:
+      x: 300
+      "y": 250
     data:
       label: Count Files
       nodeType: shell
       commands:
         - find . -name "*.ts" -o -name "*.tsx" | wc -l | tr -d ' '
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell_summary
     type: shell
-    position: { x: 550, y: 150 }
+    position:
+      x: 550
+      "y": 150
     data:
       label: Print Summary
       nodeType: shell
@@ -61,13 +120,29 @@ nodes:
           type: string
         - name: files
           type: string
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       commands:
-        - "echo '=== Project Summary ==='"
+        - echo '=== Project Summary ==='
         - "echo 'Branch: {{ inputs.branch }}'"
         - "echo 'Commit: {{ inputs.commit }}'"
         - "echo 'TypeScript files: {{ inputs.files }}'"
-        - "echo '======================='"
-
+        - echo '======================='
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger_1

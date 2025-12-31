@@ -2,11 +2,12 @@ version: 2
 metadata:
   name: Counter Loop Test
   description: Simple loop that counts up to a target number (shell nodes only)
-
 nodes:
   - id: trigger
     type: trigger
-    position: { x: 100, y: 100 }
+    position:
+      x: 100
+      "y": 100
     data:
       nodeType: trigger
       label: Start
@@ -20,11 +21,14 @@ nodes:
           type: string
         - name: params
           type: json
-
   - id: count-loop
     type: loop
-    position: { x: 300, y: 100 }
-    style: { width: 600, height: 400 }
+    position:
+      x: 300
+      "y": 100
+    style:
+      width: 600
+      height: 400
     data:
       label: Count to Target
       nodeType: loop
@@ -36,13 +40,13 @@ nodes:
       outputs:
         - name: final_count
           type: number
-
-  # Child nodes - these belong to count-loop via parentId
   - id: loop-input
     type: interface-input
     parentId: count-loop
     extent: parent
-    position: { x: 20, y: 50 }
+    position:
+      x: 20
+      "y": 50
     data:
       nodeType: interface-input
       label: Input
@@ -53,36 +57,39 @@ nodes:
           type: number
         - name: prev.count
           type: number
-
   - id: loop-output
     type: interface-output
     parentId: count-loop
     extent: parent
-    position: { x: 400, y: 50 }
+    position:
+      x: 400
+      "y": 50
     data:
       nodeType: interface-output
       label: Output
       inputs:
         - name: count
           type: number
-
   - id: loop-continue
     type: interface-continue
     parentId: count-loop
     extent: parent
-    position: { x: 400, y: 200 }
+    position:
+      x: 400
+      "y": 200
     data:
       nodeType: interface-continue
       label: Continue?
       inputs:
         - name: continue
           type: boolean
-
   - id: counter
     type: shell
     parentId: count-loop
     extent: parent
-    position: { x: 180, y: 100 }
+    position:
+      x: 180
+      "y": 100
     data:
       nodeType: shell
       label: Increment Counter
@@ -106,47 +113,56 @@ nodes:
           type: string
         - name: prev_count
           type: number
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: count
           type: number
           extract:
             type: regex
-            pattern: 'Count: (\d+)'
+            pattern: "Count: (\\d+)"
         - name: should_continue
           type: boolean
           extract:
             type: regex
-            pattern: 'CONTINUE=(true|false)'
-
+            pattern: CONTINUE=(true|false)
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
-  # Outer edge: Trigger -> Loop
   - id: trigger-to-loop
     source: trigger
     target: count-loop
-    sourceHandle: "output:text"
-    targetHandle: "input:target"
-
-  # Inner edges (within the loop)
+    sourceHandle: output:text
+    targetHandle: input:target
   - id: e1
     source: loop-input
     target: counter
-    sourceHandle: "output:target"
-    targetHandle: "input:target"
-
+    sourceHandle: output:target
+    targetHandle: input:target
   - id: e2
     source: loop-input
     target: counter
-    sourceHandle: "output:prev.count"
-    targetHandle: "input:prev_count"
-
+    sourceHandle: output:prev.count
+    targetHandle: input:prev_count
   - id: e3
     source: counter
     target: loop-output
-    sourceHandle: "output:count"
-    targetHandle: "input:count"
-
+    sourceHandle: output:count
+    targetHandle: input:count
   - id: e4
     source: counter
     target: loop-continue
-    sourceHandle: "output:should_continue"
-    targetHandle: "input:continue"
+    sourceHandle: output:should_continue
+    targetHandle: input:continue

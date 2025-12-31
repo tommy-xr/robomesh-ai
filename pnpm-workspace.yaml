@@ -3,3 +3,4 @@ packages:
   - packages/server
   - packages/designer
   - packages/cli
+  - packages/migrations

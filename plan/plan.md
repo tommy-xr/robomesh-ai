@@ -52,8 +52,6 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - [ ] Gate node for multi-stage validation with upstream retry
 
 ### Other
-- Why is the agent node inconsistent? No sessionId when adding to the workflow, but i thought we implemented it in plan/re-entrant runners?
-- Is it possible to parallelize the workflow? For example, for test-agent-stream-long.yaml, could we run the Codex and Claude agents _in parallel_?
 - Header improvement: bread crumb UI showing working directory -> active workflow
 - Some workflows missing edges (the loop ones particularly)
 - When the workflow is running, and a new workflow is imported, the current running session isn't stopped
@@ -77,3 +75,4 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - UX: Move workflow name, +new, and execution into header, to free up header (probably import/export via a drop down menu too)
 - Rebrand to robomesh.ai
 
+- Is it possible to parallelize the workflow? For example, for test-agent-stream-long.yaml, could we run the Codex and Claude agents _in parallel_?

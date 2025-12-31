@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Shodan is an AI agentic orchestration tool that allows you to define, visualize, and debug workflows spanning multiple coding agents. The project consists of four workspaces under `packages/`:
-- **core**: Shared TypeScript types for workflows, nodes, and I/O ports
+Shodan is an AI agentic orchestration tool that allows you to define, visualize, and debug workflows spanning multiple coding agents. The project consists of five workspaces under `packages/`:
+- **core**: Shared TypeScript types for workflows, nodes, I/O ports, and validation
 - **server**: Node.js/Express backend that executes workflows and provides APIs
 - **designer**: React-based visual workflow designer using ReactFlow
 - **cli**: Command-line interface for running and validating workflows
+- **migrations**: Schema migration scripts for updating existing workflows
 
 ## Development Commands
 
@@ -53,6 +54,17 @@ pnpm run shodan -- validate workflows/*.yaml
 # Use CLI from server workspace
 pnpm run -F server shodan -- run workflows/hello-world.yaml
 ```
+
+### Migrations
+```bash
+# Preview what migrations would change (dry run)
+pnpm run -F @shodan/migrations migrate:dry-run
+
+# Apply migrations to all workflows
+pnpm run -F @shodan/migrations migrate
+```
+
+Migrations are used when the workflow schema changes in a way that requires updating existing YAML files. Each migration is a separate file in `packages/migrations/src/` with documentation explaining why it was needed. See `packages/migrations/README.md` for details.
 
 ## Architecture
 

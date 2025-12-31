@@ -13,7 +13,7 @@ nodes:
     type: interface-input
     position:
       x: 100
-      'y': 100
+      "y": 100
     data:
       nodeType: interface-input
       label: Input
@@ -24,7 +24,7 @@ nodes:
     type: shell
     position:
       x: 300
-      'y': 100
+      "y": 100
     data:
       nodeType: shell
       label: Transform Uppercase
@@ -36,11 +36,20 @@ nodes:
       outputs:
         - name: output
           type: string
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: output-proxy
     type: interface-output
     position:
       x: 500
-      'y': 100
+      "y": 100
     data:
       nodeType: interface-output
       label: Output

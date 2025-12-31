@@ -2,19 +2,35 @@ version: 2
 metadata:
   name: stderr and exitCode Test
   description: Test workflow for stderr and exitCode outputs with continueOnFailure
-
 nodes:
   - id: trigger-1
     type: trigger
-    position: { x: 100, y: 100 }
+    position:
+      x: 100
+      "y": 100
     data:
       label: Start
       nodeType: trigger
       triggerType: manual
-
+      inputs: []
+      outputs:
+        - name: timestamp
+          type: string
+          description: Trigger timestamp (ISO format)
+        - name: type
+          type: string
+          description: Trigger type (manual, cron, etc.)
+        - name: text
+          type: string
+          description: Input text (for manual triggers)
+        - name: params
+          type: json
+          description: Additional trigger parameters
   - id: shell-stderr
     type: shell
-    position: { x: 300, y: 100 }
+    position:
+      x: 300
+      "y": 100
     data:
       label: Generate stderr
       nodeType: shell
@@ -22,20 +38,58 @@ nodes:
         echo "This goes to stdout"
         echo "This goes to stderr" >&2
         echo "More stderr output" >&2
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell-check-stderr
     type: shell
-    position: { x: 500, y: 100 }
+    position:
+      x: 500
+      "y": 100
     data:
       label: Check stderr
       nodeType: shell
       script: |
         echo "Captured stderr was:"
         echo "{{ shell-stderr.stderr }}"
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell-fail
     type: shell
-    position: { x: 700, y: 100 }
+    position:
+      x: 700
+      "y": 100
     data:
       label: Intentional Failure (exit 42)
       nodeType: shell
@@ -44,10 +98,29 @@ nodes:
         echo "This command will fail"
         echo "Error: Something went wrong!" >&2
         exit 42
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell-verify-exitcode
     type: shell
-    position: { x: 900, y: 100 }
+    position:
+      x: 900
+      "y": 100
     data:
       label: Verify Exit Code
       nodeType: shell
@@ -60,26 +133,40 @@ nodes:
           echo "FAILURE: Expected exit code 42, got {{ shell-fail.exitCode }}"
           exit 1
         fi
-
+      inputs:
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
+      outputs:
+        - name: output
+          type: string
+          description: Combined stdout output
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger-1
     target: shell-stderr
     sourceHandle: output:timestamp
     targetHandle: input:input
-
   - id: e2
     source: shell-stderr
     target: shell-check-stderr
     sourceHandle: output:stderr
     targetHandle: input:input
-
   - id: e3
     source: shell-check-stderr
     target: shell-fail
     sourceHandle: output:exitCode
     targetHandle: input:input
-
   - id: e4
     source: shell-fail
     target: shell-verify-exitcode

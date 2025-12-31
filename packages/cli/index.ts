@@ -5,6 +5,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { executeWorkflowSchema, type WorkflowSchema, type NodeResult } from '@shodan/server';
 import { getProjectRoot } from '@shodan/server';
+import { validateWorkflow as validateWorkflowSchema, formatValidationIssues } from '@shodan/core';
 
 // Use INIT_CWD if available (set by npm to the original working directory)
 const originalCwd = process.env.INIT_CWD || process.cwd();
@@ -34,10 +35,11 @@ ${color('Usage:', COLORS.bright)}
   shodan help                             Show this help
 
 ${color('Options:', COLORS.bright)}
-  --cwd <dir>       Override working directory
-  --input <text>    Pass text input to trigger node
-  --quiet           Only show errors and final result
-  --verbose         Show detailed output for each node
+  --cwd <dir>         Override working directory
+  --input <text>      Pass text input to trigger node
+  --quiet             Only show errors and final result
+  --verbose           Show detailed output for each node
+  --no-validation     Skip schema validation (not recommended)
 
 ${color('Examples:', COLORS.bright)}
   shodan run ./workflows/build.yaml
@@ -88,7 +90,7 @@ async function loadWorkflow(filePath: string): Promise<WorkflowSchema> {
   return schema;
 }
 
-async function runWorkflow(filePath: string, options: { cwd?: string; input?: string; quiet?: boolean; verbose?: boolean }) {
+async function runWorkflow(filePath: string, options: { cwd?: string; input?: string; quiet?: boolean; verbose?: boolean; skipValidation?: boolean }) {
   console.log(color(`\n▶ Running workflow: ${filePath}`, COLORS.bright));
 
   const schema = await loadWorkflow(filePath);
@@ -96,6 +98,20 @@ async function runWorkflow(filePath: string, options: { cwd?: string; input?: st
   // Override rootDirectory if --cwd provided
   if (options.cwd) {
     schema.metadata.rootDirectory = path.resolve(originalCwd, options.cwd);
+  }
+
+  // Run schema validation (unless skipped)
+  if (!options.skipValidation) {
+    const validation = validateWorkflowSchema(schema);
+
+    // All issues (errors and warnings) are treated as errors by default
+    if (validation.issues.length > 0) {
+      console.error(color('\n✗ Workflow validation failed:', COLORS.red, COLORS.bright));
+      console.error(formatValidationIssues(validation.issues));
+      console.error('');
+      console.error(color('Use --no-validation to skip (not recommended)', COLORS.dim));
+      return 1;
+    }
   }
 
   console.log(color(`  Workflow: ${schema.metadata.name}`, COLORS.dim));
@@ -168,9 +184,20 @@ async function runWorkflow(filePath: string, options: { cwd?: string; input?: st
   return result.success ? 0 : 1;
 }
 
-async function validateWorkflow(filePath: string): Promise<boolean> {
+async function validateWorkflowFile(filePath: string): Promise<boolean> {
   try {
     const schema = await loadWorkflow(filePath);
+
+    // Run schema validation
+    const validation = validateWorkflowSchema(schema);
+
+    // All issues (errors and warnings) fail validation
+    if (validation.issues.length > 0) {
+      console.log(color(`✗ ${filePath}`, COLORS.red), color(`(${schema.metadata.name}) - ${validation.issues.length} issue(s)`, COLORS.dim));
+      console.log(formatValidationIssues(validation.issues));
+      return false;
+    }
+
     console.log(color(`✓ ${filePath}`, COLORS.green), color(`(${schema.metadata.name})`, COLORS.dim));
     return true;
   } catch (err) {
@@ -202,6 +229,7 @@ async function main() {
       input: args.includes('--input') ? args[args.indexOf('--input') + 1] : undefined,
       quiet: args.includes('--quiet') || args.includes('-q'),
       verbose: args.includes('--verbose') || args.includes('-v'),
+      skipValidation: args.includes('--no-validation'),
     };
 
     try {
@@ -214,7 +242,7 @@ async function main() {
   }
 
   if (command === 'validate') {
-    const files = args.slice(1);
+    const files = args.slice(1).filter(f => !f.startsWith('--'));
     if (files.length === 0) {
       console.error(color('Error: Please specify workflow file(s) to validate', COLORS.red));
       process.exit(1);
@@ -224,7 +252,7 @@ async function main() {
 
     let allValid = true;
     for (const file of files) {
-      const valid = await validateWorkflow(file);
+      const valid = await validateWorkflowFile(file);
       if (!valid) allValid = false;
     }
 

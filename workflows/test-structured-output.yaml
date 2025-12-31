@@ -2,7 +2,6 @@ version: 2
 metadata:
   name: Test Structured Output
   description: Tests OpenAI native structured output with JSON schema
-
 nodes:
   - id: trigger-1
     type: trigger
@@ -15,7 +14,13 @@ nodes:
           type: string
         - name: timestamp
           type: string
-
+        - name: type
+          type: string
+          description: Trigger type (manual, cron, etc.)
+        - name: params
+          type: json
+          description: Additional trigger parameters
+      inputs: []
   - id: agent-1
     type: agent
     data:
@@ -52,6 +57,14 @@ nodes:
       inputs:
         - name: input
           type: string
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
       outputs:
         - name: response
           type: string
@@ -61,7 +74,15 @@ nodes:
           type: json
         - name: summary
           type: string
-
+        - name: output
+          type: string
+          description: Agent response text
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
   - id: shell-1
     type: shell
     data:
@@ -85,33 +106,45 @@ nodes:
           type: string
         - name: keywords
           type: json
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
         - name: output
           type: string
-
+        - name: stdout
+          type: string
+          description: Standard output
+        - name: stderr
+          type: string
+          description: Standard error
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger-1
     target: agent-1
-    sourceHandle: "output:text"
-    targetHandle: "input:input"
+    sourceHandle: output:text
+    targetHandle: input:input
   - id: e2
     source: agent-1
     target: shell-1
-    sourceHandle: "output:response"
-    targetHandle: "input:raw"
+    sourceHandle: output:response
+    targetHandle: input:raw
   - id: e3
     source: agent-1
     target: shell-1
-    sourceHandle: "output:sentiment"
-    targetHandle: "input:sentiment"
+    sourceHandle: output:sentiment
+    targetHandle: input:sentiment
   - id: e4
     source: agent-1
     target: shell-1
-    sourceHandle: "output:summary"
-    targetHandle: "input:summary"
+    sourceHandle: output:summary
+    targetHandle: input:summary
   - id: e5
     source: agent-1
     target: shell-1
-    sourceHandle: "output:keywords"
-    targetHandle: "input:keywords"
+    sourceHandle: output:keywords
+    targetHandle: input:keywords
