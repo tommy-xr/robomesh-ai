@@ -1,4 +1,4 @@
-version: 1
+version: 2
 metadata:
   name: Codex Session Persistence Test
   description: Tests Codex agent session persistence by creating a session and then resuming it
@@ -11,6 +11,15 @@ nodes:
       label: Start
       nodeType: trigger
       triggerType: manual
+      outputs:
+        - name: timestamp
+          type: string
+        - name: type
+          type: string
+        - name: text
+          type: string
+        - name: params
+          type: json
 
   # First agent call - creates a session
   - id: first_call

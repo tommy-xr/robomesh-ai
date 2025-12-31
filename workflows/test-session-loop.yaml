@@ -11,6 +11,15 @@ nodes:
       label: Start
       nodeType: trigger
       triggerType: manual
+      outputs:
+        - name: timestamp
+          type: string
+        - name: type
+          type: string
+        - name: text
+          type: string
+        - name: params
+          type: json
 
   # Loop that runs 10 times with session persistence
   - id: count-loop
@@ -68,6 +77,9 @@ nodes:
           echo "CONTINUE=false"
         fi
       inputs:
+        - name: trigger
+          type: string
+          required: false
         - name: iteration
           type: number
       outputs:
@@ -136,6 +148,13 @@ edges:
     sourceHandle: "output:timestamp"
     targetHandle: "input:trigger"
 
+  # Loop input -> Controller (internal edge to start internal execution)
+  - id: loop-trigger-to-controller
+    source: count-loop
+    target: controller
+    sourceHandle: "input:trigger:internal"
+    targetHandle: "input:trigger"
+
   # Dock: iteration -> controller
   - id: dock-iter-to-controller
     source: count-loop
@@ -171,12 +190,12 @@ edges:
     sourceHandle: "output:should_continue"
     targetHandle: "dock:continue:input"
 
-  # counter-agent output -> Loop final_output
+  # counter-agent output -> Loop final_output (via internal handle)
   - id: agent-to-loop-output
     source: counter-agent
     target: count-loop
     sourceHandle: "output:output"
-    targetHandle: "dock:final_output:current"
+    targetHandle: "output:final_output:internal"
 
   # Loop output -> Verify
   - id: loop-to-verify
