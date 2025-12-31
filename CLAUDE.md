@@ -215,5 +215,6 @@ Component workflows (version 2) also include an `interface:` section defining in
 
 ## Additional Documentation
 
-- **plan/plan.md**: Project roadmap with pending features and backlog
+- **plan/backlog.md**: Pending features and incoming work
+- **plan/completed/**: Completed feature plans (for reference)
 - **KNOWN_ISSUES.md**: Known bugs and limitations with potential fixes

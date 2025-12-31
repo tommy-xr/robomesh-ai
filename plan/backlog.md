@@ -1,4 +1,4 @@
-# Robomesh Roadmap
+# Robomesh Backlog
 
 See also: [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for bugs and limitations.
 
@@ -34,14 +34,6 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - [ ] **Copy/paste support**: Copy nodes into/out of loop containers
 - [ ] **Undo/redo support**: Proper undo/redo for loop operations (add child, move, resize)
 - [ ] **Arrow indicators for port direction**: Visual cues showing input vs output direction on dock slots
-
-### Constants Node (see constants.md)
-- [ ] Core types (`ConstantNodeData` in `packages/core`)
-- [ ] Executor support for `constant` node
-- [ ] Designer UI (`ConstantNode.tsx` - circular shape, gray)
-- [ ] "Logic" category in Sidebar
-- [ ] ConfigPanel: type dropdown + value input
-- [ ] Example workflow (`test-constant.yaml`)
 
 ### Logic Operators (see operators.md)
 **Phase 2**: Boolean logic (`not`, `and`, `or`) - purple rectangular nodes
