@@ -3,6 +3,9 @@ name: PR Screenshot
 on:
   pull_request:
 
+permissions:
+  pull-requests: write
+
 jobs:
   screenshot:
     runs-on: ubuntu-latest
