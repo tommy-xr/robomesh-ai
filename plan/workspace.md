@@ -131,27 +131,30 @@ robomesh serve [--port 3000]     # Start server with registered workspaces
 robomesh add [path]              # Register workspace (default: current dir)
 robomesh remove [path]           # Unregister workspace
 robomesh list                    # Show registered workspaces
+robomesh init [path]             # Initialize a new workspace
 ```
 
-- [ ] Add `serve` command to CLI
-- [ ] Accept `--port` option (default 3000)
-- [ ] Load registered workspaces from config
-- [ ] Import and use `createServer` from `@robomesh/server`
-- [ ] Pass designer path (need to resolve from CLI package location)
-- [ ] Print startup message with URLs
+- [x] Add `serve` command to CLI
+- [x] Accept `--port` option (default 3000)
+- [x] Load registered workspaces from config
+- [x] Import and use `createServer` from `@robomesh/server`
+- [x] Pass designer path (need to resolve from CLI package location)
+- [x] Print startup message with URLs
 
 **Workspace management**:
-- [ ] Store registered workspaces in `~/.robomesh/config.yaml`
-- [ ] `robomesh add [path]` - register workspace (defaults to cwd)
-- [ ] `robomesh list` - show registered workspaces
-- [ ] `robomesh remove [path]` - unregister workspace
-- [ ] Validate path has workflows or `.robomesh/` directory
+- [x] Store registered workspaces in `~/.robomesh/config.yaml`
+- [x] `robomesh add [path]` - register workspace (defaults to cwd)
+- [x] `robomesh list` - show registered workspaces
+- [x] `robomesh remove [path]` - unregister workspace
+- [x] Validate path has workflows or `.robomesh/` directory
+- [ ] `robomesh init [path]` - create `.robomesh/` directory
+- [ ] If `add` fails validation, offer to run `init` first
 
 **Server changes**:
-- [ ] Export `createServer` properly for CLI consumption
-- [ ] Accept `workspaces: string[]` in config (array of root directories)
-- [ ] Create WorkspaceManager to handle multiple workspaces
-- [ ] Pass workspace context to all route handlers
+- [x] Export `createServer` properly for CLI consumption
+- [x] Accept `workspaces: string[]` in config (array of root directories)
+- [x] Add `/api/workspaces` endpoint
+- [ ] Create WorkspaceManager to handle multiple workspaces (Phase 2)
 
 ### Phase 2: Workflow Discovery
 

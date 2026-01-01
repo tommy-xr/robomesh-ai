@@ -6,7 +6,7 @@ import yaml from 'js-yaml';
 import { executeWorkflowSchema, createServer, type WorkflowSchema, type NodeResult } from '@robomesh/server';
 import { getProjectRoot } from '@robomesh/server';
 import { validateWorkflow as validateWorkflowSchema, formatValidationIssues } from '@robomesh/core';
-import { addWorkspace, removeWorkspace, listWorkspaces, isValidWorkspace } from './src/config.js';
+import { addWorkspace, removeWorkspace, listWorkspaces, isValidWorkspace, initWorkspace } from './src/config.js';
 
 // Use INIT_CWD if available (set by npm to the original working directory)
 const originalCwd = process.env.INIT_CWD || process.cwd();
@@ -34,6 +34,7 @@ ${color('Usage:', COLORS.bright)}
   robomesh run <workflow.yaml> [options]    Run a workflow
   robomesh validate <workflow.yaml>         Validate a workflow file
   robomesh serve [--port 3000]              Start server with dashboard
+  robomesh init [path]                      Initialize a new workspace
   robomesh add [path]                       Register a workspace
   robomesh remove [path]                    Unregister a workspace
   robomesh list                             Show registered workspaces
@@ -54,6 +55,7 @@ ${color('Examples:', COLORS.bright)}
   robomesh run ./workflows/deploy.yaml --cwd /path/to/project
   robomesh run ./workflows/process.yaml --input "Hello World"
   robomesh validate ./workflows/*.yaml
+  robomesh init .                           # Initialize current directory
   robomesh add .                            # Register current directory
   robomesh serve                            # Start dashboard server
 `);
@@ -235,6 +237,32 @@ async function validateWorkflowFile(filePath: string): Promise<boolean> {
   }
 }
 
+async function handleInit(args: string[]) {
+  const workspacePath = args[1] || '.';
+  const absolutePath = path.resolve(originalCwd, workspacePath);
+  const createWorkflows = args.includes('--with-workflows');
+
+  // Check if already initialized
+  const validation = await isValidWorkspace(absolutePath);
+  if (validation.valid) {
+    console.log(color(`\n● Workspace already initialized: ${absolutePath}`, COLORS.yellow));
+    return;
+  }
+
+  try {
+    await initWorkspace(absolutePath, { createWorkflows });
+    console.log(color(`\n✓ Workspace initialized: ${absolutePath}`, COLORS.green));
+    console.log(color(`  Created .robomesh/ directory`, COLORS.dim));
+    if (createWorkflows) {
+      console.log(color(`  Created workflows/hello-world.yaml`, COLORS.dim));
+    }
+    console.log(color(`\n  Next: run "robomesh add ${workspacePath}" to register this workspace`, COLORS.dim));
+  } catch (err) {
+    console.error(color(`\n✗ Failed to initialize: ${(err as Error).message}`, COLORS.red));
+    process.exit(1);
+  }
+}
+
 async function handleAdd(args: string[]) {
   const workspacePath = args[1] || '.';
   const absolutePath = path.resolve(originalCwd, workspacePath);
@@ -244,6 +272,10 @@ async function handleAdd(args: string[]) {
   if (!validation.valid) {
     console.error(color(`\n✗ Cannot add workspace: ${validation.reason}`, COLORS.red));
     console.error(color(`  Path: ${absolutePath}`, COLORS.dim));
+    console.log('');
+    console.log(color(`  To initialize this directory as a workspace, run:`, COLORS.dim));
+    console.log(color(`    robomesh init ${workspacePath}`, COLORS.cyan));
+    console.log(color(`    robomesh init ${workspacePath} --with-workflows  # also create sample workflow`, COLORS.dim));
     process.exit(1);
   }
 
@@ -345,6 +377,11 @@ async function main() {
   }
 
   const command = args[0];
+
+  if (command === 'init') {
+    await handleInit(args);
+    process.exit(0);
+  }
 
   if (command === 'add') {
     await handleAdd(args);

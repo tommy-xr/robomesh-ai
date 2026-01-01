@@ -129,3 +129,76 @@ export async function isValidWorkspace(workspacePath: string): Promise<{ valid: 
     reason: 'No .robomesh/, workflows/, or .git directory found'
   };
 }
+
+/**
+ * Initialize a workspace by creating .robomesh/ directory
+ * Optionally creates workflows/ directory as well
+ */
+export async function initWorkspace(
+  workspacePath: string,
+  options: { createWorkflows?: boolean } = {}
+): Promise<void> {
+  const absolutePath = path.resolve(workspacePath);
+
+  // Create .robomesh directory
+  const robomeshDir = path.join(absolutePath, '.robomesh');
+  await fs.mkdir(robomeshDir, { recursive: true });
+
+  // Create a minimal config file
+  const workspaceConfig = {
+    name: path.basename(absolutePath),
+    version: 1,
+  };
+  await fs.writeFile(
+    path.join(robomeshDir, 'config.yaml'),
+    yaml.dump(workspaceConfig, { indent: 2 }),
+    'utf-8'
+  );
+
+  // Optionally create workflows directory
+  if (options.createWorkflows) {
+    const workflowsDir = path.join(absolutePath, 'workflows');
+    await fs.mkdir(workflowsDir, { recursive: true });
+
+    // Create a sample workflow
+    const sampleWorkflow = {
+      version: 1,
+      metadata: {
+        name: 'Hello World',
+        description: 'A simple example workflow',
+      },
+      nodes: [
+        {
+          id: 'trigger-1',
+          type: 'trigger',
+          position: { x: 100, y: 100 },
+          data: {
+            label: 'Start',
+            triggerType: 'manual',
+          },
+        },
+        {
+          id: 'shell-1',
+          type: 'shell',
+          position: { x: 100, y: 200 },
+          data: {
+            label: 'Echo',
+            script: 'echo "Hello from Robomesh!"',
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 'trigger-1',
+          target: 'shell-1',
+        },
+      ],
+    };
+    await fs.writeFile(
+      path.join(workflowsDir, 'hello-world.yaml'),
+      yaml.dump(sampleWorkflow, { indent: 2 }),
+      'utf-8'
+    );
+  }
+}
