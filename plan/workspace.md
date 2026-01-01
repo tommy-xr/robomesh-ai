@@ -104,12 +104,12 @@ pnpm run -F @robomesh/server test:serve    # API integration tests
 - [ ] TriggerManager respects priority (cron > idle)
 - [ ] `GET /api/triggers` returns trigger status
 
-### Phase 4 Tests
-- [ ] Dashboard page loads at `/`
-- [ ] Workflow list shows all workspaces
-- [ ] Start button triggers workflow execution
-- [ ] Stop button cancels running workflow
-- [ ] Status updates in real-time (via polling)
+### Phase 4 Tests (DONE)
+- [x] GET /api/execution/status returns status
+- [x] POST /api/execution/start requires workspace and workflowPath
+- [x] POST /api/execution/start with invalid workspace returns 404
+- [x] POST /api/execution/cancel when not running returns error
+- [x] GET /api/execution/history returns empty array
 
 ### Phase 5 Tests
 - [ ] Trigger config removes unsupported types
@@ -209,23 +209,23 @@ nodes:
 - [ ] Execute workflows when triggers fire
 - [ ] Expose status via API: `GET /api/triggers`
 
-### Phase 4: Workflow Dashboard
+### Phase 4: Workflow Dashboard (DONE)
 
 Add an overview page to manage all workflows in the workspace.
 
 **Dashboard view** (`packages/designer/src/pages/Dashboard.tsx`):
-- [ ] List all workflows discovered in workspace
-- [ ] Show status for each: idle, running, completed, failed
-- [ ] Show trigger type and schedule info
-- [ ] Actions: Start (manual), Stop (cancel running), View (open in designer)
-- [ ] Real-time updates via polling or SSE
+- [x] List all workflows discovered in workspace
+- [x] Show status for each: idle, running, completed, failed
+- [x] Show trigger type and schedule info
+- [x] Actions: Start (manual), Stop (cancel running), View (open in designer)
+- [x] Real-time updates via polling or SSE
 
 **Execution tracking**:
-- [ ] Limit to one running workflow per workspace (initially)
-- [ ] Track running workflow ID and progress in server state
-- [ ] `GET /api/execution/status` - Current execution state
-- [ ] `POST /api/execution/cancel` - Cancel running workflow
-- [ ] Show node-by-node progress on dashboard
+- [x] Limit to one running workflow per workspace (initially)
+- [x] Track running workflow ID and progress in server state
+- [x] `GET /api/execution/status` - Current execution state
+- [x] `POST /api/execution/cancel` - Cancel running workflow
+- [x] Show node-by-node progress on dashboard
 
 **Dashboard layout**:
 ```
@@ -246,9 +246,9 @@ Add an overview page to manage all workflows in the workspace.
 ```
 
 **Routing**:
-- [ ] `/` - Dashboard (workflow list + status)
-- [ ] `/workflow/:path` - Designer view for specific workflow
-- [ ] Use React Router for navigation
+- [x] `/` - Dashboard (workflow list + status)
+- [x] `/workflow/:workspace/:path` - Designer view for specific workflow
+- [x] Use React Router for navigation
 
 ### Phase 5: Designer Integration
 

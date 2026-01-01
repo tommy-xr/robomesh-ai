@@ -227,6 +227,57 @@ const tests = [
     const data = await res.json();
     assert(data.message !== undefined, 'Expected message in response');
   }),
+
+  // Phase 4: Execution API Tests
+  test('GET /api/execution/status returns status', async () => {
+    const res = await fetch(`${BASE_URL}/api/execution/status`);
+    assertEqual(res.status, 200, 'Expected status 200');
+
+    const data = await res.json();
+    assert(typeof data.isRunning === 'boolean', 'Expected isRunning to be boolean');
+  }),
+
+  test('POST /api/execution/start requires workspace and workflowPath', async () => {
+    const res = await fetch(`${BASE_URL}/api/execution/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assertEqual(res.status, 400, 'Expected status 400 for missing params');
+
+    const data = await res.json();
+    assert(data.error !== undefined, 'Expected error message');
+  }),
+
+  test('POST /api/execution/start with invalid workspace returns 404', async () => {
+    const res = await fetch(`${BASE_URL}/api/execution/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace: 'nonexistent-workspace',
+        workflowPath: 'test.yaml',
+      }),
+    });
+    assertEqual(res.status, 404, 'Expected status 404 for invalid workspace');
+  }),
+
+  test('POST /api/execution/cancel when not running returns error', async () => {
+    const res = await fetch(`${BASE_URL}/api/execution/cancel`, {
+      method: 'POST',
+    });
+    assertEqual(res.status, 400, 'Expected status 400 when no workflow running');
+
+    const data = await res.json();
+    assert(data.error !== undefined, 'Expected error message');
+  }),
+
+  test('GET /api/execution/history returns empty array', async () => {
+    const res = await fetch(`${BASE_URL}/api/execution/history`);
+    assertEqual(res.status, 200, 'Expected status 200');
+
+    const data = await res.json();
+    assert(Array.isArray(data.history), 'Expected history to be an array');
+  }),
 ];
 
 // Main

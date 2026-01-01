@@ -125,6 +125,7 @@ export function createWorkflowsRouter(workspaces: string[]): Router {
       res.json({
         ...workflow,
         workspace: workspaceName,
+        workspacePath,
         schema,
       });
     } catch (err) {

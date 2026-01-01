@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import type { DragEvent } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   ReactFlow,
   Controls,
@@ -70,7 +71,71 @@ function Flow() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dragOverLoopId, setDragOverLoopId] = useState<string | null>(null);
+  const [urlWorkflowLoaded, setUrlWorkflowLoaded] = useState(false);
   const { screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
+
+  // Get URL params for workspace/workflow routing
+  const { workspace, '*': workflowPath } = useParams();
+
+  // Load workflow from URL params (when navigating from dashboard)
+  useEffect(() => {
+    if (!workspace || !workflowPath || urlWorkflowLoaded) return;
+
+    const loadWorkflowFromUrl = async () => {
+      try {
+        const res = await fetch(
+          `/api/workflows/detail?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(workflowPath)}`
+        );
+        if (!res.ok) {
+          console.error('Failed to load workflow from URL');
+          return;
+        }
+
+        const data = await res.json();
+        const schema = data.schema;
+
+        // Convert workflow nodes to ReactFlow nodes
+        const importedNodes: Node<BaseNodeData>[] = schema.nodes.map((n: { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown>; parentId?: string; extent?: string; style?: { width?: number; height?: number } }) => ({
+          id: n.id,
+          type: n.type,
+          position: n.position,
+          parentId: n.parentId,
+          extent: n.extent === 'parent' ? 'parent' as const : undefined,
+          style: n.style,
+          data: {
+            ...n.data,
+            nodeType: n.type as NodeType,
+          } as BaseNodeData,
+        }));
+
+        // Convert edges
+        const importedEdges: Edge[] = schema.edges.map((e: { id: string; source: string; target: string; sourceHandle?: string; targetHandle?: string }) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
+        }));
+
+        // Update state
+        updateNodeIdCounter(importedNodes);
+        setNodes(importedNodes);
+        setEdges(importedEdges);
+        setWorkflowName(data.name || schema.metadata?.name || 'Untitled Workflow');
+        setRootDirectory(data.workspacePath || '');
+        setSelectedNode(null);
+        setEdgeExecutionData(new Map());
+        setUrlWorkflowLoaded(true);
+
+        // Fit view after loading
+        setTimeout(() => fitView({ padding: 0.2 }), 50);
+      } catch (err) {
+        console.error('Failed to load workflow from URL:', err);
+      }
+    };
+
+    loadWorkflowFromUrl();
+  }, [workspace, workflowPath, urlWorkflowLoaded, setNodes, setEdges, fitView]);
 
   // Helper: Find the loop container that contains a given position (in flow coordinates)
   const findContainingLoop = useCallback((position: { x: number; y: number }, excludeNodeId?: string): Node<BaseNodeData> | null => {
