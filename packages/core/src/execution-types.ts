@@ -7,6 +7,7 @@ export type NodeStatus = 'pending' | 'running' | 'completed' | 'failed';
 export interface NodeResult {
   nodeId: string;
   status: NodeStatus;
+  inputs?: Record<string, unknown>; // Resolved input values for this node
   output?: string;
   rawOutput?: string; // Clean output without command prefixes, used for templating
   stdout?: string;    // Standard output (for shell/script nodes)

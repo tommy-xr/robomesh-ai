@@ -23,6 +23,8 @@ dotenv.config({ path: path.join(projectRoot, '.env') });
 export { executeWorkflowSchema } from './engine/executor.js';
 export type { WorkflowSchema, WorkflowNode, WorkflowEdge, NodeResult, NodeStatus } from '@robomesh/core';
 export { getProjectRoot } from './utils/project-root.js';
+export { recordExecution } from './routes/execution.js';
+export type { ExecutionHistoryEntry, ExecutionSource } from './routes/execution.js';
 
 export interface ServerConfig {
   port: number;

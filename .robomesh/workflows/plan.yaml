@@ -1,0 +1,85 @@
+version: 1
+metadata:
+  name: plan
+  description: ''
+  rootDirectory: /Users/bryphe/shodan
+nodes:
+  - id: trigger_1
+    type: trigger
+    position:
+      x: -400.11703740699227
+      'y': -0.768140798083806
+    data:
+      label: Start
+      triggerType: manual
+      nodeType: trigger
+      executionStatus: completed
+      executionOutput: Trigger activated
+  - id: node_0
+    type: agent
+    position:
+      x: 82.89079509810652
+      'y': -278.6775067925033
+    data:
+      label: New Agent
+      nodeType: agent
+      inputs:
+        - name: prompt
+          type: string
+          required: false
+          description: Override prompt (optional)
+        - name: sessionId
+          type: string
+          required: false
+          description: Session ID to resume (optional)
+        - name: input_3
+          type: string
+          required: false
+      outputs:
+        - name: output
+          type: string
+          description: Agent response text
+        - name: sessionId
+          type: string
+          description: Session ID for continuation
+        - name: exitCode
+          type: number
+          description: Exit code (0 = success)
+      prompt: |-
+        {{ inputs.prompt }}
+
+        Also, any other notes:
+        {{ inputs.input_3 }} 
+
+        Please go ahead and implement this item.
+      executionStatus: failed
+      executionOutput: ''
+      executionError: Agent node requires a runner to be specified
+      runner: claude-code
+      model: opus
+  - id: node_1
+    type: constant
+    position:
+      x: -348.81408293216566
+      'y': -208.22783287750997
+    data:
+      label: Planning Prompt
+      nodeType: constant
+      valueType: string
+      value: Hi, please pick a good next item to work on from the plan/backlog.md file
+      outputs:
+        - name: value
+          type: string
+      executionStatus: completed
+      executionOutput: 'Constant: "Hi, please pick a good next item to work on from the plan/backlog.md file"'
+edges:
+  - id: xy-edge__node_1output:value-node_0input:prompt
+    source: node_1
+    target: node_0
+    sourceHandle: output:value
+    targetHandle: input:prompt
+  - id: xy-edge__trigger_1output:text-node_0input:input_3
+    source: trigger_1
+    target: node_0
+    sourceHandle: output:text
+    targetHandle: input:input_3

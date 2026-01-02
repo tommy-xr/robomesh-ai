@@ -7,6 +7,7 @@ import { executeWorkflowSchema, createServer, type WorkflowSchema, type NodeResu
 import { getProjectRoot } from '@robomesh/server';
 import { validateWorkflow as validateWorkflowSchema, formatValidationIssues } from '@robomesh/core';
 import { addWorkspace, removeWorkspace, listWorkspaces, isValidWorkspace, initWorkspace } from './src/config.js';
+import { runChat } from './src/chat/index.js';
 
 // Use INIT_CWD if available (set by npm to the original working directory)
 const originalCwd = process.env.INIT_CWD || process.cwd();
@@ -31,7 +32,8 @@ function printUsage() {
 ${color('Robomesh', COLORS.bright, COLORS.cyan)} - AI Workflow Orchestration
 
 ${color('Usage:', COLORS.bright)}
-  robomesh run <workflow.yaml> [options]    Run a workflow
+  robomesh chat <workflow>                  Interactive workflow execution
+  robomesh run <workflow.yaml> [options]    Run a workflow (non-interactive)
   robomesh validate <workflow.yaml>         Validate a workflow file
   robomesh serve [--port 3000]              Start server with dashboard
   robomesh init [path]                      Initialize a new workspace
@@ -47,10 +49,16 @@ ${color('Run Options:', COLORS.bright)}
   --verbose           Show detailed output for each node
   --no-validation     Skip schema validation (not recommended)
 
+${color('Chat Options:', COLORS.bright)}
+  --cwd <dir>         Override working directory
+  --no-validation     Skip schema validation
+
 ${color('Serve Options:', COLORS.bright)}
   --port <port>       Server port (default: 3000)
 
 ${color('Examples:', COLORS.bright)}
+  robomesh chat plan                        # Run workflows/plan.yaml interactively
+  robomesh chat ./workflows/build.yaml      # Run explicit workflow
   robomesh run ./workflows/build.yaml
   robomesh run ./workflows/deploy.yaml --cwd /path/to/project
   robomesh run ./workflows/process.yaml --input "Hello World"
@@ -401,6 +409,28 @@ async function main() {
   if (command === 'serve') {
     await handleServe(args);
     return; // Don't exit, server is running
+  }
+
+  if (command === 'chat') {
+    const workflowArg = args[1];
+    if (!workflowArg) {
+      console.error(color('Error: Please specify a workflow', COLORS.red));
+      console.error(color('  Example: robomesh chat plan', COLORS.dim));
+      process.exit(1);
+    }
+
+    const options = {
+      cwd: args.includes('--cwd') ? args[args.indexOf('--cwd') + 1] : undefined,
+      skipValidation: args.includes('--no-validation'),
+    };
+
+    try {
+      const exitCode = await runChat(workflowArg, options);
+      process.exit(exitCode);
+    } catch (err) {
+      console.error(color(`\nError: ${(err as Error).message}`, COLORS.red));
+      process.exit(1);
+    }
   }
 
   if (command === 'run') {
