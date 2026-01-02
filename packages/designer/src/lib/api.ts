@@ -5,8 +5,8 @@ import type { NodeResult, NodeStatus } from '@robomesh/core';
 // Re-export for convenience
 export type { NodeResult, NodeStatus };
 
-const serverPort = import.meta.env.VITE_SERVER_PORT || '3000';
-const API_BASE = import.meta.env.VITE_API_URL || `http://localhost:${serverPort}/api`;
+// Use relative URLs to work with any port, or explicit URL if configured
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 // Config types
 export interface ConfigResponse {

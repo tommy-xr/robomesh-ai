@@ -78,7 +78,9 @@ function Flow() {
   const { screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
 
   // Get URL params for workspace/workflow routing
-  const { workspace, '*': workflowPath } = useParams();
+  const { workspace, '*': rawWorkflowPath } = useParams();
+  // Decode the workflow path since it was URL-encoded in the dashboard
+  const workflowPath = rawWorkflowPath ? decodeURIComponent(rawWorkflowPath) : undefined;
 
   // Load workflow from URL params (when navigating from dashboard)
   useEffect(() => {
@@ -133,6 +135,8 @@ function Flow() {
         // Track file-based workflow for autosave
         setCurrentWorkspace(workspace);
         setCurrentWorkflowPath(workflowPath);
+        setLastSaveTime(Date.now()); // Mark as just loaded to prevent immediate "unsaved"
+        setHasUnsavedChanges(false);
 
         // Fit view after loading
         setTimeout(() => fitView({ padding: 0.2 }), 50);
@@ -209,16 +213,25 @@ function Flow() {
     return () => clearTimeout(timeoutId);
   }, [nodes, edges, workflowName, rootDirectory, getViewport]);
 
+  // Track unsaved changes for file-based workflows
+  useEffect(() => {
+    // Skip if not a file-based workflow or just loaded
+    if (!currentWorkspace || !currentWorkflowPath) return;
+    if (Date.now() - lastSaveTime < 500) return; // Just loaded or just saved
+
+    setHasUnsavedChanges(true);
+  }, [nodes, edges, workflowName, rootDirectory, currentWorkspace, currentWorkflowPath, lastSaveTime]);
+
   // Auto-save to file for file-based workflows (debounced, less frequent)
   useEffect(() => {
     // Skip if not a file-based workflow or no nodes yet
     if (!currentWorkspace || !currentWorkflowPath || nodes.length === 0) return;
+    // Skip if no unsaved changes
+    if (!hasUnsavedChanges) return;
 
-    // Debounce file saves more aggressively (2 seconds)
+    // Debounce file saves (2 seconds)
     const timeoutId = setTimeout(async () => {
-      // Don't save if we just loaded (prevent save loop)
-      if (Date.now() - lastSaveTime < 1000) return;
-
+      setIsSaving(true);
       try {
         const schema = {
           version: 1,
@@ -251,13 +264,16 @@ function Flow() {
           schema,
         });
         setLastSaveTime(Date.now());
+        setHasUnsavedChanges(false);
       } catch (err) {
         console.error('Failed to autosave workflow:', err);
+      } finally {
+        setIsSaving(false);
       }
     }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [nodes, edges, workflowName, rootDirectory, currentWorkspace, currentWorkflowPath, lastSaveTime]);
+  }, [nodes, edges, workflowName, rootDirectory, currentWorkspace, currentWorkflowPath, hasUnsavedChanges]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -1125,6 +1141,9 @@ function Flow() {
         onSaveComponent={isEditingComponent ? onSaveComponent : undefined}
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
+        isFileBased={!!currentWorkspace && !!currentWorkflowPath}
+        workspaceName={currentWorkspace || undefined}
+        workflowPath={currentWorkflowPath || undefined}
         onWorkflowNameChange={setWorkflowName}
         onNewWorkflow={onNewWorkflow}
         nodes={nodes}
