@@ -162,11 +162,19 @@ export async function runChat(workflowArg: string, options: ChatOptions = {}): P
     }
   }
 
-  // Set root directory using project root discovery
-  const workflowDir = path.dirname(workflowPath);
-  if (!schema.metadata.rootDirectory) {
+  // Set root directory:
+  // 1. If --cwd is provided, use that (user explicitly wants this directory)
+  // 2. Otherwise, use project root discovery from workflow location
+  if (options.cwd) {
+    // User explicitly provided --cwd, use it as root directory
+    schema.metadata.rootDirectory = cwd;
+  } else if (!schema.metadata.rootDirectory) {
+    // No --cwd and no rootDirectory in workflow, discover from workflow location
+    const workflowDir = path.dirname(workflowPath);
     schema.metadata.rootDirectory = getProjectRoot(workflowDir);
   } else if (!path.isAbsolute(schema.metadata.rootDirectory)) {
+    // Workflow has relative rootDirectory, resolve from workflow location
+    const workflowDir = path.dirname(workflowPath);
     schema.metadata.rootDirectory = path.resolve(workflowDir, schema.metadata.rootDirectory);
   }
 

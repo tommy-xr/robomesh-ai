@@ -1,0 +1,55 @@
+version: 1
+metadata:
+  name: Test Working Directory
+  description: Outputs the current working directory for testing --cwd option
+
+nodes:
+  - id: trigger
+    type: trigger
+    position:
+      x: 50
+      "y": 100
+    data:
+      nodeType: trigger
+      label: Start
+      triggerType: manual
+      outputs:
+        - name: timestamp
+          type: string
+        - name: type
+          type: string
+        - name: text
+          type: string
+        - name: params
+          type: json
+
+  - id: pwd
+    type: shell
+    position:
+      x: 200
+      "y": 100
+    data:
+      nodeType: shell
+      label: Print Working Directory
+      script: |
+        echo "CWD: $(pwd)"
+      inputs:
+        - name: input
+          type: any
+          required: false
+      outputs:
+        - name: output
+          type: string
+        - name: stdout
+          type: string
+        - name: stderr
+          type: string
+        - name: exitCode
+          type: number
+
+edges:
+  - id: e1
+    source: trigger
+    target: pwd
+    sourceHandle: output:text
+    targetHandle: input:input

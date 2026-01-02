@@ -117,3 +117,35 @@ describe('Error Handling', () => {
     );
   });
 });
+
+describe('Working Directory (--cwd)', () => {
+  // Use absolute path for workflow since --cwd affects resolution
+  const testCwdWorkflow = path.join(projectRoot, 'workflows/test-cwd.yaml');
+
+  test('--cwd option sets the working directory for workflow execution', async () => {
+    // Run test-cwd.yaml which outputs pwd, with --cwd /tmp
+    const result = await runCli(['chat', testCwdWorkflow, '--cwd', '/tmp'], 'test');
+    assert.strictEqual(result.exitCode, 0, `Should succeed, got: ${result.stderr}`);
+    // The workflow outputs "CWD: <path>", verify it shows /tmp
+    assert.ok(
+      result.stdout.includes('CWD: /tmp') || result.stdout.includes('CWD: /private/tmp'),
+      `Should execute in /tmp, got: ${result.stdout}`
+    );
+  });
+
+  test('without --cwd, uses project root discovery', async () => {
+    // Run test-cwd.yaml without --cwd, should use project root
+    const result = await runCli(['chat', 'test-cwd'], 'test');
+    assert.strictEqual(result.exitCode, 0, `Should succeed, got: ${result.stderr}`);
+    // Should NOT be in /tmp
+    assert.ok(
+      !result.stdout.includes('CWD: /tmp'),
+      `Should not execute in /tmp without --cwd, got: ${result.stdout}`
+    );
+    // Should be in the project directory (contains 'shodan')
+    assert.ok(
+      result.stdout.includes('shodan') || result.stdout.includes('CWD:'),
+      `Should show CWD output, got: ${result.stdout}`
+    );
+  });
+});
