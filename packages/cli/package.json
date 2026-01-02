@@ -9,16 +9,20 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch index.ts",
-    "robomesh": "tsx index.ts"
+    "robomesh": "tsx index.ts",
+    "test": "tsx --test src/test-cli.ts"
   },
   "dependencies": {
     "@robomesh/core": "workspace:*",
     "@robomesh/server": "workspace:*",
-    "js-yaml": "^4.1.0"
+    "ink": "^6.6.0",
+    "js-yaml": "^4.1.0",
+    "react": "^19.2.3"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
+    "@types/react": "^19.2.7",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
