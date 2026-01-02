@@ -110,16 +110,17 @@ export function createServer(config: ServerConfig): Express {
 const isMainModule = process.argv[1]?.includes('server/dist/index.js') ||
                      process.argv[1]?.includes('server/src/index.ts');
 if (isMainModule) {
+  // Auto-discover project root as workspace when running directly
+  const discoveredRoot = getProjectRoot();
+  const discoveredMarker = getProjectRootMarker(discoveredRoot);
+
   const config: ServerConfig = {
     port: parseInt(process.env.PORT || '3000', 10),
     designerPath: process.env.DESIGNER_PATH || path.join(__dirname, '../../designer/dist'),
+    workspaces: [discoveredRoot], // Use discovered root as workspace
   };
 
   const app = createServer(config);
-
-  // Discover project root for logging
-  const discoveredRoot = getProjectRoot();
-  const discoveredMarker = getProjectRootMarker(discoveredRoot);
 
   app.listen(config.port, () => {
     console.log(`Robomesh server running at http://localhost:${config.port}`);
