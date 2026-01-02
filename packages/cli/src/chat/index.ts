@@ -12,9 +12,10 @@ import * as readline from 'readline';
 import React from 'react';
 import { render } from 'ink';
 import yaml from 'js-yaml';
-import { executeWorkflowSchema, getProjectRoot, type WorkflowSchema } from '@robomesh/server';
+import { executeWorkflowSchema, getProjectRoot, recordExecution, type WorkflowSchema } from '@robomesh/server';
 import { validateWorkflow, formatValidationIssues } from '@robomesh/core';
-import { ChatApp } from './ChatApp.js';
+import type { NodeResult } from '@robomesh/core';
+import { ChatApp, type ExecutionResult } from './ChatApp.js';
 
 // Use INIT_CWD if available (set by npm to the original working directory)
 const originalCwd = process.env.INIT_CWD || process.cwd();
@@ -197,20 +198,49 @@ export async function runChat(workflowArg: string, options: ChatOptions = {}): P
     userInput = await readPipedInput();
   }
 
+  // Determine workspace info for history
+  const projectRoot = schema.metadata.rootDirectory || cwd;
+  const workspace = path.basename(projectRoot);
+  const relativeWorkflowPath = path.relative(projectRoot, workflowPath);
+
   // Track workflow result
-  let workflowSuccess = true;
+  const resultRef: { current: ExecutionResult | null } = { current: null };
+  const startedAt = new Date().toISOString();
 
   // Render the ink app
   const { waitUntilExit } = render(
     React.createElement(ChatApp, {
       schema,
       userInput,
-      onComplete: (success: boolean) => {
-        workflowSuccess = success;
+      onComplete: (result: ExecutionResult) => {
+        resultRef.current = result;
       },
     })
   );
 
   await waitUntilExit();
-  return workflowSuccess ? 0 : 1;
+
+  // Record execution to history
+  const executionResult = resultRef.current;
+  if (executionResult) {
+    try {
+      await recordExecution({
+        workspace,
+        workflowPath: relativeWorkflowPath,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        status: executionResult.success ? 'completed' : 'failed',
+        duration: executionResult.duration,
+        nodeCount: executionResult.nodeCount,
+        source: 'cli',
+        error: executionResult.error,
+        results: executionResult.results,
+      });
+    } catch (err) {
+      // Don't fail the command if history recording fails
+      console.error(`Warning: Failed to record execution history: ${(err as Error).message}`);
+    }
+  }
+
+  return executionResult?.success ? 0 : 1;
 }

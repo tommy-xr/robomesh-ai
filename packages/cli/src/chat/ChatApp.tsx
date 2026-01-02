@@ -13,16 +13,25 @@ import type { NodeResult, WorkflowNode } from '@robomesh/core';
 // Check if we're in an interactive terminal
 const isInteractive = process.stdin.isTTY === true;
 
+export interface ExecutionResult {
+  success: boolean;
+  duration: number;
+  nodeCount: number;
+  results: NodeResult[];
+  error?: string;
+}
+
 interface Props {
   schema: WorkflowSchema;
   userInput: string;
-  onComplete?: (success: boolean) => void;
+  onComplete?: (result: ExecutionResult) => void;
 }
 
 interface RunningNode {
   id: string;
   label: string;
   type: string;
+  inputs: Record<string, unknown>;
   output: string[];
   status: 'running' | 'completed' | 'failed';
 }
@@ -46,8 +55,8 @@ export function ChatApp({ schema, userInput, onComplete }: Props) {
   // Handle keyboard input for node focus switching (only in interactive mode)
   useInput(
     (input, key) => {
-      // Ctrl+1 through Ctrl+9 to focus nodes
-      if (key.ctrl && input >= '1' && input <= '9') {
+      // 1-9 to focus nodes (no modifier needed since user isn't typing during execution)
+      if (input >= '1' && input <= '9') {
         const idx = parseInt(input) - 1;
         if (idx < runningNodes.length) {
           setFocusedIndex(focusedIndex === idx ? null : idx);
@@ -76,6 +85,7 @@ export function ChatApp({ schema, userInput, onComplete }: Props) {
             id: nodeId,
             label,
             type: nodeType,
+            inputs: {},
             output: [],
             status: 'running',
           });
@@ -117,8 +127,15 @@ export function ChatApp({ schema, userInput, onComplete }: Props) {
           const next = new Map(prev);
           const node = next.get(nodeId);
           if (node) {
+            // Use result.output if we didn't get streaming output
+            let output = node.output;
+            if (output.length === 0 && result.output) {
+              output = result.output.split('\n');
+            }
             next.set(nodeId, {
               ...node,
+              inputs: result.inputs || {},
+              output,
               status: result.status === 'completed' ? 'completed' : 'failed',
             });
           }
@@ -129,23 +146,43 @@ export function ChatApp({ schema, userInput, onComplete }: Props) {
       },
     })
       .then((result) => {
-        setDuration(Date.now() - startTime);
+        const elapsed = Date.now() - startTime;
+        setDuration(elapsed);
         if (result.success) {
           setPhase('completed');
-          onComplete?.(true);
+          onComplete?.({
+            success: true,
+            duration: elapsed,
+            nodeCount: result.results.length,
+            results: result.results,
+          });
         } else {
           setPhase('failed');
           setError(result.error || 'Workflow failed');
-          onComplete?.(false);
+          onComplete?.({
+            success: false,
+            duration: elapsed,
+            nodeCount: result.results.length,
+            results: result.results,
+            error: result.error || 'Workflow failed',
+          });
         }
         // Exit after a brief delay to ensure final render
         setTimeout(() => exit(), 100);
       })
       .catch((err) => {
-        setDuration(Date.now() - startTime);
+        const elapsed = Date.now() - startTime;
+        setDuration(elapsed);
         setPhase('failed');
-        setError((err as Error).message);
-        onComplete?.(false);
+        const errorMessage = (err as Error).message;
+        setError(errorMessage);
+        onComplete?.({
+          success: false,
+          duration: elapsed,
+          nodeCount: 0,
+          results: [],
+          error: errorMessage,
+        });
         setTimeout(() => exit(), 100);
       });
   }, [schema, userInput, exit, onComplete]);
@@ -160,17 +197,10 @@ export function ChatApp({ schema, userInput, onComplete }: Props) {
         const node = nodes.get(nodeId);
         if (!node) return null;
 
-        // Skip running nodes when showing compact view
-        if (showCompactParallel && node.status === 'running') {
+        // Skip running nodes when showing compact view OR focused view
+        // (FocusedView handles rendering running nodes when focused)
+        if (node.status === 'running' && runningNodes.length > 1) {
           return null;
-        }
-
-        // If focused on a specific node, only show that one expanded for running nodes
-        if (runningNodes.length > 1 && focusedIndex !== null && node.status === 'running') {
-          const focusedNode = runningNodes[focusedIndex];
-          if (node.id !== focusedNode?.id) {
-            return null; // Will be shown in the status bar
-          }
         }
 
         return <NodeBox key={nodeId} node={node} />;
@@ -220,6 +250,16 @@ interface NodeBoxProps {
   node: RunningNode;
 }
 
+function formatValue(value: unknown): string {
+  if (typeof value === 'string') {
+    // Truncate long strings to single line
+    const clean = value.replace(/\n/g, ' ').trim();
+    return clean.length > 50 ? clean.slice(0, 47) + '...' : clean;
+  }
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
 function NodeBox({ node }: NodeBoxProps) {
   const statusIcon =
     node.status === 'running' ? '●' : node.status === 'completed' ? '✓' : '✗';
@@ -227,31 +267,35 @@ function NodeBox({ node }: NodeBoxProps) {
   const statusColor =
     node.status === 'running' ? 'yellow' : node.status === 'completed' ? 'green' : 'red';
 
-  // Build header
-  const header = `─ ${node.label} (${node.type}) `;
-  const headerPadding = '─'.repeat(Math.max(0, 50 - header.length));
+  // Format inputs for display
+  const inputEntries = Object.entries(node.inputs).filter(([_, v]) => v !== undefined && v !== '');
 
   return (
     <Box flexDirection="column" marginBottom={1}>
       {/* Header */}
       <Text>
-        <Text color={statusColor}>{statusIcon}</Text>
-        <Text dimColor>┌{header}{headerPadding}</Text>
+        <Text color={statusColor}>{statusIcon} </Text>
+        <Text bold>{node.label}</Text>
+        <Text dimColor> ({node.type})</Text>
       </Text>
 
-      {/* Output lines */}
-      {node.output.length > 0 && (
-        <Box flexDirection="column" paddingLeft={1}>
-          {node.output.slice(-20).map((line, i) => (
-            <Text key={i} dimColor>
-              │ {line}
-            </Text>
-          ))}
+      {/* Inputs */}
+      {inputEntries.length > 0 && (
+        <Box paddingLeft={2}>
+          <Text dimColor>
+            ⎿ {inputEntries.map(([k, v]) => `${k}: ${formatValue(v)}`).join(', ')}
+          </Text>
         </Box>
       )}
 
-      {/* Footer */}
-      <Text dimColor>└{'─'.repeat(51)}</Text>
+      {/* Output lines */}
+      {node.output.length > 0 && (
+        <Box flexDirection="column" paddingLeft={2}>
+          {node.output.slice(-20).map((line, i) => (
+            <Text key={i}>{line}</Text>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -261,31 +305,34 @@ interface CompactParallelViewProps {
 }
 
 function CompactParallelView({ nodes }: CompactParallelViewProps) {
-  const footer = isInteractive
-    ? `└─ Press Ctrl+1/${nodes.length} to expand ${'─'.repeat(27)}`
-    : `└${'─'.repeat(51)}`;
-
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text dimColor>┌─ Running {nodes.length} nodes {'─'.repeat(33)}</Text>
+      <Text dimColor>Running {nodes.length} nodes in parallel:</Text>
 
       {nodes.map((node, index) => {
-        // Get preview (last non-empty line, truncated)
-        const lastLine = [...node.output].reverse().find((l) => l.trim()) || '';
-        const preview = lastLine.length > 35 ? lastLine.slice(0, 32) + '...' : lastLine;
+        // Get preview - last 40 chars of combined output
+        const allOutput = node.output.join(' ').trim();
+        const preview = allOutput.length > 40
+          ? '...' + allOutput.slice(-37)
+          : allOutput;
 
         return (
-          <Text key={node.id}>
-            <Text dimColor>│ </Text>
-            {isInteractive && <Text color="cyan">[{index + 1}]</Text>}
-            <Text> {node.label.slice(0, 16).padEnd(16)} </Text>
-            <Text color="yellow">● </Text>
-            <Text dimColor>{preview}</Text>
-          </Text>
+          <Box key={node.id} paddingLeft={2}>
+            <Text>
+              {isInteractive && <Text color="cyan">[{index + 1}] </Text>}
+              <Text color="yellow">● </Text>
+              <Text>{node.label}</Text>
+              {preview && <Text dimColor> - {preview}</Text>}
+            </Text>
+          </Box>
         );
       })}
 
-      <Text dimColor>{footer}</Text>
+      {isInteractive && (
+        <Box paddingLeft={2}>
+          <Text dimColor>Press 1-{nodes.length} to expand</Text>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -305,21 +352,22 @@ function FocusedView({ focusedNode, otherNodes, focusedIndex }: FocusedViewProps
       <NodeBox node={focusedNode} />
 
       {/* Status bar with other running nodes */}
-      <Box>
-        <Text dimColor>│ </Text>
+      <Box paddingLeft={2}>
+        <Text dimColor>Also running: </Text>
         {otherNodes.map((node, i) => {
           const actualIndex = i < focusedIndex ? i : i + 1;
           return (
             <Text key={node.id}>
               <Text color="cyan">[{actualIndex + 1}]</Text>
-              <Text> {node.label.slice(0, 10)} </Text>
-              <Text color="yellow">● </Text>
-              <Text>  </Text>
+              <Text> {node.label} </Text>
+              <Text color="yellow">●  </Text>
             </Text>
           );
         })}
       </Box>
-      <Text dimColor>└─ Press Ctrl+N to switch, Esc to collapse {'─'.repeat(14)}</Text>
+      <Box paddingLeft={2}>
+        <Text dimColor>Press 1-9 to switch, Esc to collapse</Text>
+      </Box>
     </Box>
   );
 }

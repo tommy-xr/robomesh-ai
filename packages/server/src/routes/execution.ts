@@ -40,6 +40,8 @@ export interface ExecutionState {
   error?: string;
 }
 
+export type ExecutionSource = 'cli' | 'ui' | 'cron' | 'idle';
+
 export interface ExecutionHistoryEntry {
   id: string;
   workspace: string;
@@ -49,6 +51,7 @@ export interface ExecutionHistoryEntry {
   status: 'completed' | 'failed' | 'cancelled';
   duration: number; // milliseconds
   nodeCount: number;
+  source?: ExecutionSource; // How the execution was triggered
   error?: string;
   results?: NodeResult[];
 }
@@ -173,7 +176,7 @@ let registeredWorkspaces: string[] = [];
 export async function startWorkflow(
   workspace: string,
   workflowPath: string,
-  options?: { triggeredBy?: string }
+  options?: { triggeredBy?: string; source?: ExecutionSource }
 ): Promise<{ success: boolean; error?: string; runId?: string }> {
   if (executionState.isRunning) {
     return {
@@ -265,6 +268,7 @@ export async function startWorkflow(
         status: hasFailedNode ? 'failed' : 'completed',
         duration,
         nodeCount: result.results.length,
+        source: options?.source || 'ui',
         error: failedNode?.error,
         results: result.results,
       });
@@ -296,6 +300,7 @@ export async function startWorkflow(
         status: 'failed',
         duration,
         nodeCount: executionState.results?.length || 0,
+        source: options?.source || 'ui',
         error: (err as Error).message,
         results: executionState.results,
       });
@@ -474,4 +479,13 @@ export function createExecutionRouter(workspaces: string[]): Router {
  */
 export function getExecutionState(): ExecutionState {
   return executionState;
+}
+
+/**
+ * Record a workflow execution to history (for CLI and other programmatic use)
+ */
+export async function recordExecution(entry: Omit<ExecutionHistoryEntry, 'id'>): Promise<string> {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await addToHistory({ ...entry, id });
+  return id;
 }

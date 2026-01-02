@@ -1498,6 +1498,9 @@ export async function executeWorkflow(
     const processedNode = processNodeTemplates(nodeWithIO, context, inputValues);
     const result = await executeNode(processedNode, rootDirectory || process.cwd(), nodes, edges, context, options);
 
+    // Add resolved inputs to the result
+    result.inputs = inputValues;
+
     if (onNodeComplete) {
       onNodeComplete(nodeId, result);
     }
