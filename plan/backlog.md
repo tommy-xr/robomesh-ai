@@ -40,7 +40,7 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 
 ### Workspace Polish (minor remaining items from workspace.md)
 - [x] IdleTrigger auto-selection - Pick random idle workflow when nothing else running
-- [ ] Designer trigger config UI - Remove unsupported trigger types from dropdown
+- [x] Designer trigger config UI - Remove unsupported trigger types from dropdown
 
 ### Other
 - Multi-agent CLI output isn't ideal - especially when there is only one item running. We should maybe constrain to a single sentence / line (ideally a summary) - we may be able to pick specific events to pull out like CLaude Code. The test plan.yaml one is a good example of this.
