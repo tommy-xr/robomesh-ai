@@ -52,7 +52,6 @@ export interface WorkflowNodeData {
   runner?: string;
   model?: string;
   outputSchema?: string;
-  dangerouslySkipPermissions?: boolean;
 
   // Trigger node fields
   triggerType?: string;

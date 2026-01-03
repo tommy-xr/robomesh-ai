@@ -1124,10 +1124,6 @@ async function executeNode(
     // Create session if node has sessionId output and no sessionId input
     const createSession = hasSessionIdOutput && !sessionIdInput;
 
-    // Use global dangerouslySkipPermissions or per-node setting
-    const skipPermissions = options.dangerouslySkipPermissions ||
-      (node.data.dangerouslySkipPermissions as boolean | undefined) || false;
-
     const result = await executeAgent({
       runner,
       model,
@@ -1138,7 +1134,7 @@ async function executeNode(
       inputValues,  // Pass input values for template injection
       sessionId: sessionIdInput,   // Resume existing session if provided
       createSession,               // Create new session if output defined but no input
-      dangerouslySkipPermissions: skipPermissions,
+      dangerouslySkipPermissions: options.dangerouslySkipPermissions,
       onOutput: options.onNodeOutput
         ? (chunk: string) => options.onNodeOutput!(node.id, chunk)
         : undefined,
