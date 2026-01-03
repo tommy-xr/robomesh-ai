@@ -16,6 +16,9 @@ nodes:
       label: Manual Trigger
       nodeType: trigger
       triggerType: manual
+      outputs:
+        - name: output
+          type: string
 
   - id: claude-haiku
     type: agent
@@ -34,6 +37,12 @@ nodes:
 
         The haiku should follow the traditional 5-7-5 syllable structure.
         Include a brief note about what inspired each line.
+      inputs:
+        - name: trigger
+          type: string
+      outputs:
+        - name: output
+          type: string
 
   - id: codex-haiku
     type: agent
@@ -52,11 +61,21 @@ nodes:
 
         The haiku should follow the traditional 5-7-5 syllable structure.
         Include a brief note about what inspired each line.
+      inputs:
+        - name: trigger
+          type: string
+      outputs:
+        - name: output
+          type: string
 
 edges:
   - id: trigger-to-claude
     source: trigger
     target: claude-haiku
+    sourceHandle: "output:output"
+    targetHandle: "input:trigger"
   - id: trigger-to-codex
     source: trigger
     target: codex-haiku
+    sourceHandle: "output:output"
+    targetHandle: "input:trigger"

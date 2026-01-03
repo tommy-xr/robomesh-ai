@@ -88,9 +88,10 @@ async function runCodexCli(config: AgentConfig): Promise<AgentResult> {
     const args: string[] = ['exec'];
 
     // Add permission bypass flag if enabled
-    // --full-auto enables sandboxed automatic execution with workspace-write permissions
+    // --dangerously-bypass-approvals-and-sandbox skips all prompts and sandbox restrictions
+    // This gives full network and filesystem access
     if (config.dangerouslySkipPermissions) {
-      args.push('--full-auto');
+      args.push('--dangerously-bypass-approvals-and-sandbox');
     }
 
     // Determine if we're resuming an existing session

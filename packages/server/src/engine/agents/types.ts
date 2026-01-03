@@ -22,9 +22,10 @@ export interface AgentConfig {
   onOutput?: (chunk: string) => void;
 
   // Permission control for CLI-based agents
-  // When true, enables auto-approval mode for write operations:
+  // When true, bypasses all permission prompts and sandbox restrictions:
   // - Claude Code: --dangerously-skip-permissions
-  // - Codex: --full-auto
+  // - Codex: --dangerously-bypass-approvals-and-sandbox
+  // - Gemini CLI: --yolo
   dangerouslySkipPermissions?: boolean;
 }
 
