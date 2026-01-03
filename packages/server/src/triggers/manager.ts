@@ -40,6 +40,7 @@ export class TriggerManager {
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private onTriggerFire?: (trigger: RegisteredTrigger) => Promise<void>;
   private triggersFile: string | null;
+  private idleSince: Date | null = null; // When system became idle
 
   constructor(options?: TriggerManagerOptions) {
     this.clock = options?.clock ?? realClock;
@@ -168,7 +169,7 @@ export class TriggerManager {
   }
 
   /**
-   * Get triggers that are due to fire
+   * Get cron triggers that are due to fire
    */
   getDueTriggers(): RegisteredTrigger[] {
     const now = this.clock.now();
@@ -178,6 +179,64 @@ export class TriggerManager {
       if (!trigger.nextRun) return false;
       return trigger.nextRun <= now;
     });
+  }
+
+  /**
+   * Set whether the system is idle (no workflows running)
+   * When transitioning to idle, records the time for idle trigger calculation
+   */
+  setIdle(isIdle: boolean): void {
+    if (isIdle && !this.idleSince) {
+      // Transitioning to idle - record the time
+      this.idleSince = this.clock.now();
+      console.log(`[TriggerManager] System is now idle`);
+    } else if (!isIdle && this.idleSince) {
+      // Transitioning to busy - clear idle state
+      this.idleSince = null;
+      console.log(`[TriggerManager] System is now busy`);
+    }
+  }
+
+  /**
+   * Check if system is currently idle
+   */
+  isIdle(): boolean {
+    return this.idleSince !== null;
+  }
+
+  /**
+   * Get how long the system has been idle (in milliseconds)
+   * Returns 0 if not idle
+   */
+  getIdleDuration(): number {
+    if (!this.idleSince) return 0;
+    return this.clock.now().getTime() - this.idleSince.getTime();
+  }
+
+  /**
+   * Get idle triggers that are due to fire based on idle duration
+   * Returns triggers where idleMinutes <= current idle duration
+   */
+  getDueIdleTriggers(): RegisteredTrigger[] {
+    if (!this.idleSince) return [];
+
+    const idleMinutes = this.getIdleDuration() / (60 * 1000);
+
+    return this.getAll().filter(trigger => {
+      if (!trigger.enabled) return false;
+      if (trigger.config.type !== 'idle') return false;
+      const requiredMinutes = trigger.config.idleMinutes ?? 0;
+      return idleMinutes >= requiredMinutes;
+    });
+  }
+
+  /**
+   * Select a random trigger from an array
+   */
+  private selectRandom(triggers: RegisteredTrigger[]): RegisteredTrigger | null {
+    if (triggers.length === 0) return null;
+    const index = Math.floor(Math.random() * triggers.length);
+    return triggers[index];
   }
 
   /**
@@ -215,24 +274,50 @@ export class TriggerManager {
 
   /**
    * Check for due triggers and fire them
+   * - Fires ALL due cron triggers
+   * - Fires ONE random idle trigger (if any are due)
    */
   async checkAndFire(): Promise<RegisteredTrigger[]> {
-    const dueTriggers = this.getDueTriggers();
     const firedTriggers: RegisteredTrigger[] = [];
 
-    for (const trigger of dueTriggers) {
+    // Fire all due cron triggers
+    const dueCronTriggers = this.getDueTriggers();
+    for (const trigger of dueCronTriggers) {
       if (this.onTriggerFire) {
         try {
           await this.onTriggerFire(trigger);
           this.markFired(trigger);
           firedTriggers.push(trigger);
         } catch (err) {
-          console.error(`Error firing trigger ${trigger.id}:`, err);
+          console.error(`Error firing cron trigger ${trigger.id}:`, err);
         }
       } else {
         // No callback, just mark as fired
         this.markFired(trigger);
         firedTriggers.push(trigger);
+      }
+    }
+
+    // Fire one random idle trigger (if system is idle long enough)
+    const dueIdleTriggers = this.getDueIdleTriggers();
+    if (dueIdleTriggers.length > 0) {
+      const selectedTrigger = this.selectRandom(dueIdleTriggers);
+      if (selectedTrigger) {
+        if (this.onTriggerFire) {
+          try {
+            console.log(`[TriggerManager] Firing idle trigger: ${selectedTrigger.label} (idle for ${Math.round(this.getIdleDuration() / 60000)} minutes)`);
+            await this.onTriggerFire(selectedTrigger);
+            this.markFired(selectedTrigger);
+            firedTriggers.push(selectedTrigger);
+            // Note: setIdle(false) should be called by the execution system when workflow starts
+          } catch (err) {
+            console.error(`Error firing idle trigger ${selectedTrigger.id}:`, err);
+          }
+        } else {
+          // No callback, just mark as fired
+          this.markFired(selectedTrigger);
+          firedTriggers.push(selectedTrigger);
+        }
       }
     }
 

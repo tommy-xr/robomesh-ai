@@ -39,13 +39,15 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - [ ] Gate node for multi-stage validation with upstream retry
 
 ### Workspace Polish (minor remaining items from workspace.md)
-- [ ] IdleTrigger auto-selection - Pick random idle workflow when nothing else running
+- [x] IdleTrigger auto-selection - Pick random idle workflow when nothing else running
 - [ ] Designer trigger config UI - Remove unsupported trigger types from dropdown
 
 ### Other
 - Multi-agent CLI output isn't ideal - especially when there is only one item running. We should maybe constrain to a single sentence / line (ideally a summary) - we may be able to pick specific events to pull out like CLaude Code. The test plan.yaml one is a good example of this.
 - Workspaces view: show run live progress in the 'status' sidebar pane - need a concept of 'selected' workflow
-- Add a 'CONCAT' operator - take multiple strings and combine them. (see [array-input-output.md](./array-input-output.md))
+- Improved nested components:
+	- Allow for 'inline' nested components that don't need a separate file.
+	- Allow existing workflows to be 'mapped' to a compopnent. The 'inputs' can be any of the trigger values, and the 'outputs' could be pulled from any terminal node. 
 - Upgrade AND/OR to N-ary operators (requires array inputs)
 - For the plan.yml workflow - why can I not create an edge from trigger.text -> agent?
 - The node ids are implicit - can we make those editable?
@@ -62,21 +64,17 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - When the workflow is running, and a new workflow is imported, the current running session isn't stopped
 - Implement plan/retry-gate.md
 - Add refactor -> extract tool. Highlight an area, pull the inputs/outputs, and extract to a component
-- Fix agent models - we might want to make an API request and query each tool respectively?
-- Coercing agent output to JSON to fit output requirements - can we rely on the agents to do that, or does it require a GPT call to coalesce?
-- Higher-order components
-- --working-directory (run workflows in other projects)
+- Higher-order components - a generalized version of the loop. Essentially, we'd create a simpler experience to creeting a nested component _except_ we'd also hhave the ability to add some 'state' input and outputs that the internals would map to. From a design perspective, we'd have the inputs on the left, outputs on the right, and state input/output on the top. The state input/output would be customizable, and would allow us to build primitives like loop but also other sorts of logic that can interact with a customizable set of 'inner components'. It's basically extending our loop to be a primitive that is modifiable.
 - Planning workflow
 - UX: Move workflow name, +new, and execution into header, to free up header (probably import/export via a drop down menu too)
 - Implement auto-layout
 - Deploy to robomesh.ai, w/o ability to run workflows
 - Set up to run locally - whats the best way to open UI from CLI?
 - 3d view when running - flatten out the 'map' and overlay live terminal, output, etc in the third dimension
-
-- Implement component library plan (component-library.md)
-- Component versioning/history
-- 90 degree edges?
-- Auto-layout?
+- Are selection
+- Duplicate node shortcut key when clicking and dragging?
+- Copy/paste 
+- Auto-layout? Can we add an auto-layout command for a selection?
 - Add a concept of tools - specifically, the ability to directly talk to an agent (ie, queue an additional prompt)
 
 ### MVP
