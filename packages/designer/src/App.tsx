@@ -146,11 +146,16 @@ function maybeAddArraySlot(
  * Clean up empty trailing array slots after edge disconnection.
  * Keeps at least one slot so users can still connect.
  */
+interface CleanupResult {
+  inputs: PortDefinition[];
+  edgeRemaps: Map<string, string>; // old handleId -> new handleId
+}
+
 function cleanupArraySlots(
   nodeInputs: PortDefinition[],
   edges: Edge[],
   nodeId: string
-): PortDefinition[] | null {
+): CleanupResult | null {
   // Group inputs by array parent
   const arrayGroups = new Map<string, PortDefinition[]>();
   const nonArrayInputs: PortDefinition[] = [];
@@ -169,6 +174,7 @@ function cleanupArraySlots(
 
   let changed = false;
   const cleanedInputs: PortDefinition[] = [...nonArrayInputs];
+  const edgeRemaps = new Map<string, string>();
 
   for (const [parentName, slots] of arrayGroups) {
     // Sort by index
@@ -187,45 +193,47 @@ function cleanupArraySlots(
       }
     }
 
-    // Keep all connected slots plus one empty slot at the end
-    const keptSlots = [...connectedSlots];
+    // Renumber connected slots to be contiguous starting from 0
+    const renumberedSlots: PortDefinition[] = [];
+    for (let i = 0; i < connectedSlots.length; i++) {
+      const oldSlot = connectedSlots[i];
+      const oldName = oldSlot.name;
+      const newName = `${parentName}[${i}]`;
 
-    // Find max index among connected slots
-    const maxConnectedIndex = connectedSlots.length > 0
-      ? Math.max(...connectedSlots.map(s => s.arrayIndex ?? 0))
-      : -1;
+      // Track if we need to remap this edge
+      if (oldName !== newName) {
+        edgeRemaps.set(`input:${oldName}`, `input:${newName}`);
+        changed = true;
+      }
 
-    // Add one empty slot after the last connected slot
-    const nextEmptyIndex = maxConnectedIndex + 1;
-
-    // Check if we already have a slot at this index
-    const existingNextSlot = slots.find(s => s.arrayIndex === nextEmptyIndex);
-    if (existingNextSlot) {
-      keptSlots.push(existingNextSlot);
-    } else if (slots.length > 0) {
-      // Create a new slot at the next index
-      const template = slots[0];
-      keptSlots.push({
-        name: `${parentName}[${nextEmptyIndex}]`,
-        label: `${parentName}[${nextEmptyIndex}]`,
-        type: template.type,
-        arrayParent: parentName,
-        arrayIndex: nextEmptyIndex,
+      renumberedSlots.push({
+        ...oldSlot,
+        name: newName,
+        label: newName,
+        arrayIndex: i,
       });
     }
 
-    // Sort kept slots by index
-    keptSlots.sort((a, b) => (a.arrayIndex ?? 0) - (b.arrayIndex ?? 0));
+    // Add one empty slot at the end
+    const nextEmptyIndex = connectedSlots.length;
+    const template = slots[0];
+    renumberedSlots.push({
+      name: `${parentName}[${nextEmptyIndex}]`,
+      label: `${parentName}[${nextEmptyIndex}]`,
+      type: template.type,
+      arrayParent: parentName,
+      arrayIndex: nextEmptyIndex,
+    });
 
-    // Check if anything changed
-    if (keptSlots.length !== slots.length) {
+    // Check if the total number of slots changed
+    if (renumberedSlots.length !== slots.length) {
       changed = true;
     }
 
-    cleanedInputs.push(...keptSlots);
+    cleanedInputs.push(...renumberedSlots);
   }
 
-  return changed ? cleanedInputs : null;
+  return changed ? { inputs: cleanedInputs, edgeRemaps } : null;
 }
 
 function Flow() {
@@ -525,29 +533,57 @@ function Flow() {
         }
       }
 
-      // Clean up array slots for affected nodes
+      // Clean up array slots for affected nodes and collect edge remappings
       if (affectedNodeIds.size > 0) {
-        setNodes(nds => nds.map(node => {
-          if (!affectedNodeIds.has(node.id)) return node;
-          if (!node.data.inputs) return node;
+        // Collect all edge remappings across affected nodes
+        const allEdgeRemaps = new Map<string, { nodeId: string; newHandle: string }>();
+        const nodeUpdates = new Map<string, PortDefinition[]>();
 
-          const cleanedInputs = cleanupArraySlots(
-            node.data.inputs as PortDefinition[],
-            newEdges,
-            node.id
-          );
+        setNodes(nds => {
+          for (const node of nds) {
+            if (!affectedNodeIds.has(node.id)) continue;
+            if (!node.data.inputs) continue;
 
-          if (cleanedInputs) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                inputs: cleanedInputs,
-              },
-            };
+            const result = cleanupArraySlots(
+              node.data.inputs as PortDefinition[],
+              newEdges,
+              node.id
+            );
+
+            if (result) {
+              nodeUpdates.set(node.id, result.inputs);
+              for (const [oldHandle, newHandle] of result.edgeRemaps) {
+                allEdgeRemaps.set(`${node.id}:${oldHandle}`, { nodeId: node.id, newHandle });
+              }
+            }
           }
-          return node;
-        }));
+
+          return nds.map(node => {
+            const newInputs = nodeUpdates.get(node.id);
+            if (newInputs) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  inputs: newInputs,
+                },
+              };
+            }
+            return node;
+          });
+        });
+
+        // Apply edge remappings if any
+        if (allEdgeRemaps.size > 0) {
+          setEdges(eds => eds.map(edge => {
+            const key = `${edge.target}:${edge.targetHandle}`;
+            const remap = allEdgeRemaps.get(key);
+            if (remap) {
+              return { ...edge, targetHandle: remap.newHandle };
+            }
+            return edge;
+          }));
+        }
       }
     },
     [edges, setEdges, setNodes]

@@ -116,4 +116,102 @@ test.describe('Array Input Ports', () => {
     await expect(andNode.locator('.port-label').filter({ hasText: /^a$/ })).toBeVisible();
     await expect(andNode.locator('.port-label').filter({ hasText: /^b$/ })).toBeVisible();
   });
+
+  test('deleting middle array slot renumbers remaining slots', async ({ page }) => {
+    // This test verifies that when you delete an edge to values[0] but values[1] is still connected,
+    // the remaining slot is renumbered to values[0] (not left as values[1])
+
+    // Set up the scenario via localStorage (simulating a saved workflow state)
+    await page.evaluate(() => {
+      const state = {
+        nodes: [
+          {
+            id: 'const1',
+            type: 'constant',
+            position: { x: 50, y: 100 },
+            data: {
+              label: 'A',
+              type: 'constant',
+              value: 'Hello',
+              valueType: 'string',
+              outputs: [{ name: 'value', type: 'string' }],
+            },
+          },
+          {
+            id: 'const2',
+            type: 'constant',
+            position: { x: 50, y: 200 },
+            data: {
+              label: 'B',
+              type: 'constant',
+              value: 'World',
+              valueType: 'string',
+              outputs: [{ name: 'value', type: 'string' }],
+            },
+          },
+          {
+            id: 'concat1',
+            type: 'function',
+            position: { x: 300, y: 150 },
+            data: {
+              label: 'CONCAT',
+              type: 'function',
+              code: 'return { result: inputs.values.join(inputs.separator || "") }',
+              inputs: [
+                { name: 'values[0]', label: 'values[0]', type: 'string', arrayParent: 'values', arrayIndex: 0 },
+                { name: 'values[1]', label: 'values[1]', type: 'string', arrayParent: 'values', arrayIndex: 1 },
+                { name: 'values[2]', label: 'values[2]', type: 'string', arrayParent: 'values', arrayIndex: 2 },
+                { name: 'separator', type: 'string' },
+              ],
+              outputs: [{ name: 'result', type: 'string' }],
+            },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'const1', target: 'concat1', sourceHandle: 'output:value', targetHandle: 'input:values[0]' },
+          { id: 'e2', source: 'const2', target: 'concat1', sourceHandle: 'output:value', targetHandle: 'input:values[1]' },
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        workflowName: 'Test Workflow',
+        rootDirectory: '/tmp',
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem('robomesh-workflow', JSON.stringify(state));
+    });
+
+    // Reload to pick up the state
+    await page.reload();
+    await page.waitForSelector('.react-flow');
+
+    // Verify initial state: CONCAT should have values[0], values[1], values[2]
+    const concatNode = page.locator('.react-flow__node').filter({ hasText: 'CONCAT' });
+    await expect(concatNode).toBeVisible();
+
+    // Verify we have the expected ports before deletion
+    await expect(concatNode.locator('.port-label').filter({ hasText: 'values[0]' })).toBeVisible();
+    await expect(concatNode.locator('.port-label').filter({ hasText: 'values[1]' })).toBeVisible();
+    await expect(concatNode.locator('.port-label').filter({ hasText: 'values[2]' })).toBeVisible();
+
+    // Click on the first edge to select it, then delete it
+    // First, find the edge path (React Flow renders edges as SVG paths)
+    const edge1 = page.locator('.react-flow__edge').first();
+    await edge1.click();
+
+    // Press Delete or Backspace to remove the selected edge
+    await page.keyboard.press('Backspace');
+
+    // Wait for the cleanup to happen
+    await page.waitForTimeout(200);
+
+    // After deleting values[0]'s edge, the remaining connected edge (was values[1])
+    // should be renumbered to values[0], and there should be a new empty values[1]
+    // We should NOT see values[2] anymore
+
+    // Verify we now have only values[0] and values[1] (not values[1], values[2])
+    await expect(concatNode.locator('.port-label').filter({ hasText: 'values[0]' })).toBeVisible();
+    await expect(concatNode.locator('.port-label').filter({ hasText: 'values[1]' })).toBeVisible();
+
+    // values[2] should no longer exist
+    await expect(concatNode.locator('.port-label').filter({ hasText: 'values[2]' })).not.toBeVisible();
+  });
 });

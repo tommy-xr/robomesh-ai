@@ -87,9 +87,11 @@ nodes:
       nodeType: function
       code: 'return { result: inputs.values.join(inputs.separator || "") }'
       inputs:
-        - name: values[0]
+        - name: separator
           type: string
+        - name: values[0]
           label: values[0]
+          type: string
           arrayParent: values
           arrayIndex: 0
         - name: values[1]
@@ -97,21 +99,14 @@ nodes:
           type: string
           arrayParent: values
           arrayIndex: 1
-        - name: values[2]
-          label: values[2]
-          type: string
-          arrayParent: values
-          arrayIndex: 2
-        - name: separator
-          type: string
       outputs:
         - name: result
           type: string
   - id: node_4
     type: constant
     position:
-      x: -196.11266474742607
-      'y': 167.97227409237004
+      x: -145.2736200422844
+      'y': 240.91525127800804
     data:
       label: Constant
       nodeType: constant
@@ -123,8 +118,8 @@ nodes:
   - id: node_5
     type: constant
     position:
-      x: -222.06839180433727
-      'y': 266.4250318944471
+      x: -152.4410044907737
+      'y': 309.527700231415
     data:
       label: Constant
       nodeType: constant
