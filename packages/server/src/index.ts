@@ -82,6 +82,9 @@ export function createServer(config: ServerConfig): Express {
   if (config.enableTriggers !== false) {
     const checkInterval = config.triggerCheckInterval || 10000;
     triggerManager.start(checkInterval);
+
+    // Initialize system as idle (no workflow running at startup)
+    triggerManager.setIdle(true);
   }
 
   // Workspaces endpoint

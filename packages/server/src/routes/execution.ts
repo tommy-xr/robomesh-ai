@@ -11,6 +11,7 @@ import fs from 'fs/promises';
 import yaml from 'js-yaml';
 import { executeWorkflowSchema } from '../engine/executor.js';
 import type { WorkflowSchema, NodeResult } from '@robomesh/core';
+import { getTriggerManager } from '../triggers/index.js';
 
 // Get robomesh home directory
 function getRobomeshHome(): string {
@@ -239,6 +240,9 @@ export async function startWorkflow(
     console.log(`[Trigger] Starting workflow ${workspace}/${workflowPath} (triggered by: ${options.triggeredBy})`);
   }
 
+  // Mark system as busy (not idle) - this stops idle triggers from firing
+  getTriggerManager().setIdle(false);
+
   // Execute in background
   const startTime = Date.now();
 
@@ -289,6 +293,9 @@ export async function startWorkflow(
       if (options?.triggeredBy) {
         console.log(`[Trigger] Workflow ${workspace}/${workflowPath} completed (status: ${hasFailedNode ? 'failed' : 'completed'})`);
       }
+
+      // Mark system as idle - this allows idle triggers to start counting
+      getTriggerManager().setIdle(true);
     })
     .catch(err => {
       const completedAt = new Date().toISOString();
@@ -319,6 +326,9 @@ export async function startWorkflow(
       if (options?.triggeredBy) {
         console.log(`[Trigger] Workflow ${workspace}/${workflowPath} failed: ${(err as Error).message}`);
       }
+
+      // Mark system as idle - this allows idle triggers to start counting
+      getTriggerManager().setIdle(true);
     });
 
   return { success: true, runId };

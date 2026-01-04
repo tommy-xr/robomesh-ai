@@ -242,6 +242,225 @@ const tests = [
     assertEqual(count, 2, 'Should remove 2 triggers');
     assertEqual(manager.getAll().length, 1, 'Should have 1 trigger left');
   }),
+
+  // ==================== Idle Trigger Tests ====================
+
+  test('setIdle transitions system to idle state', () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    assert(!manager.isIdle(), 'Should not be idle initially');
+
+    manager.setIdle(true);
+    assert(manager.isIdle(), 'Should be idle after setIdle(true)');
+
+    manager.setIdle(false);
+    assert(!manager.isIdle(), 'Should not be idle after setIdle(false)');
+  }),
+
+  test('getIdleDuration returns correct time since idle', () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    assertEqual(manager.getIdleDuration(), 0, 'Duration should be 0 when not idle');
+
+    manager.setIdle(true);
+    assertEqual(manager.getIdleDuration(), 0, 'Duration should be 0 immediately after going idle');
+
+    // Advance 5 minutes
+    clock.advance(5 * 60 * 1000);
+    assertEqual(manager.getIdleDuration(), 5 * 60 * 1000, 'Duration should be 5 minutes');
+
+    // Advance 10 more minutes
+    clock.advance(10 * 60 * 1000);
+    assertEqual(manager.getIdleDuration(), 15 * 60 * 1000, 'Duration should be 15 minutes');
+  }),
+
+  test('getDueIdleTriggers returns triggers when idle long enough', () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    // Register idle trigger that fires after 5 minutes idle
+    manager.register('ws1', 'wf1.yaml', 't1', 'Idle Task', {
+      type: 'idle',
+      idleMinutes: 5,
+    });
+
+    // Not idle yet - should return empty
+    let due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 0, 'Should have no due triggers when not idle');
+
+    // Go idle
+    manager.setIdle(true);
+
+    // Only 4 minutes elapsed - not due yet
+    clock.advance(4 * 60 * 1000);
+    due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 0, 'Should have no due triggers after 4 minutes');
+
+    // 5 minutes elapsed - now due
+    clock.advance(1 * 60 * 1000);
+    due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 1, 'Should have 1 due trigger after 5 minutes');
+    assertEqual(due[0].label, 'Idle Task', 'Should be the Idle Task trigger');
+  }),
+
+  test('idle triggers with different thresholds become due at correct times', () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    manager.register('ws1', 'wf1.yaml', 't1', 'Quick Task', { type: 'idle', idleMinutes: 2 });
+    manager.register('ws1', 'wf2.yaml', 't2', 'Normal Task', { type: 'idle', idleMinutes: 5 });
+    manager.register('ws1', 'wf3.yaml', 't3', 'Slow Task', { type: 'idle', idleMinutes: 10 });
+
+    manager.setIdle(true);
+
+    // After 1 minute - none due
+    clock.advance(1 * 60 * 1000);
+    assertEqual(manager.getDueIdleTriggers().length, 0, 'None due after 1 minute');
+
+    // After 3 minutes total - Quick Task due
+    clock.advance(2 * 60 * 1000);
+    let due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 1, 'One due after 3 minutes');
+    assertEqual(due[0].label, 'Quick Task', 'Quick Task should be due');
+
+    // After 6 minutes total - Quick and Normal due
+    clock.advance(3 * 60 * 1000);
+    due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 2, 'Two due after 6 minutes');
+
+    // After 11 minutes total - all three due
+    clock.advance(5 * 60 * 1000);
+    due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 3, 'All three due after 11 minutes');
+  }),
+
+  test('checkAndFire fires idle trigger after configured time', async () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    manager.register('ws1', 'wf1.yaml', 't1', 'Idle Task', {
+      type: 'idle',
+      idleMinutes: 5,
+    });
+
+    const firedTriggers: string[] = [];
+    manager.onFire(async (trigger) => {
+      firedTriggers.push(trigger.id);
+    });
+
+    manager.setIdle(true);
+
+    // Before 5 minutes - should not fire
+    clock.advance(4 * 60 * 1000);
+    let fired = await manager.checkAndFire();
+    assertEqual(fired.length, 0, 'Should not fire before 5 minutes');
+    assertEqual(firedTriggers.length, 0, 'Callback should not be called');
+
+    // After 5+ minutes - should fire
+    clock.advance(2 * 60 * 1000);
+    fired = await manager.checkAndFire();
+    assertEqual(fired.length, 1, 'Should fire after 5 minutes');
+    assertEqual(firedTriggers.length, 1, 'Callback should be called once');
+    assertEqual(firedTriggers[0], 'ws1:wf1.yaml:t1', 'Should fire correct trigger');
+  }),
+
+  test('checkAndFire fires only one idle trigger when multiple are due', async () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    // Register 3 idle triggers all due at 5 minutes
+    manager.register('ws1', 'wf1.yaml', 't1', 'Task 1', { type: 'idle', idleMinutes: 5 });
+    manager.register('ws1', 'wf2.yaml', 't2', 'Task 2', { type: 'idle', idleMinutes: 5 });
+    manager.register('ws1', 'wf3.yaml', 't3', 'Task 3', { type: 'idle', idleMinutes: 5 });
+
+    const firedTriggers: string[] = [];
+    manager.onFire(async (trigger) => {
+      firedTriggers.push(trigger.id);
+    });
+
+    manager.setIdle(true);
+    clock.advance(6 * 60 * 1000); // 6 minutes - all should be due
+
+    // All 3 are due, but only 1 should fire
+    const fired = await manager.checkAndFire();
+    assertEqual(fired.length, 1, 'Should fire exactly one idle trigger');
+    assertEqual(firedTriggers.length, 1, 'Callback should be called once');
+  }),
+
+  test('idle triggers do not fire when system is not idle', async () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    manager.register('ws1', 'wf1.yaml', 't1', 'Idle Task', {
+      type: 'idle',
+      idleMinutes: 5,
+    });
+
+    const firedTriggers: string[] = [];
+    manager.onFire(async (trigger) => {
+      firedTriggers.push(trigger.id);
+    });
+
+    // Go idle then busy immediately
+    manager.setIdle(true);
+    clock.advance(6 * 60 * 1000);
+    manager.setIdle(false); // Back to busy
+
+    const fired = await manager.checkAndFire();
+    assertEqual(fired.length, 0, 'Should not fire when not idle');
+    assertEqual(firedTriggers.length, 0, 'Callback should not be called');
+  }),
+
+  test('setIdle(false) resets idle timer', async () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    manager.register('ws1', 'wf1.yaml', 't1', 'Idle Task', {
+      type: 'idle',
+      idleMinutes: 5,
+    });
+
+    // Go idle for 4 minutes
+    manager.setIdle(true);
+    clock.advance(4 * 60 * 1000);
+    assertEqual(manager.getIdleDuration(), 4 * 60 * 1000, 'Should be 4 minutes idle');
+
+    // Go busy, then idle again
+    manager.setIdle(false);
+    manager.setIdle(true);
+
+    // Timer should reset - only 2 minutes now
+    clock.advance(2 * 60 * 1000);
+    assertEqual(manager.getIdleDuration(), 2 * 60 * 1000, 'Should be 2 minutes after reset');
+
+    // Not enough total idle time yet
+    let due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 0, 'Should not be due after reset + 2 minutes');
+
+    // 3 more minutes - now 5 total since second idle
+    clock.advance(3 * 60 * 1000);
+    due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 1, 'Should be due after 5 minutes continuous idle');
+  }),
+
+  test('disabled idle triggers do not fire', async () => {
+    const clock = createMockClock(new Date('2025-01-01T10:00:00Z'));
+    const manager = createTestManager(clock);
+
+    manager.register('ws1', 'wf1.yaml', 't1', 'Idle Task', {
+      type: 'idle',
+      idleMinutes: 5,
+    });
+
+    manager.setEnabled('ws1', 'wf1.yaml', 't1', false);
+    manager.setIdle(true);
+    clock.advance(10 * 60 * 1000);
+
+    const due = manager.getDueIdleTriggers();
+    assertEqual(due.length, 0, 'Disabled idle triggers should not be due');
+  }),
 ];
 
 // Run tests
