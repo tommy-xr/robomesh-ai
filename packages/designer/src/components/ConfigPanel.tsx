@@ -680,11 +680,11 @@ function ConstantConfig({ node, onUpdate }: Omit<NodeConfigProps, 'rootDirectory
             onChange={(e) => handleValueChange(parseFloat(e.target.value) || 0)}
           />
         ) : (
-          <input
-            type="text"
+          <textarea
             value={typeof value === 'string' ? value : ''}
             onChange={(e) => handleValueChange(e.target.value)}
             placeholder="Enter value..."
+            rows={3}
           />
         )}
       </div>
