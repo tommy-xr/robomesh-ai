@@ -35,8 +35,19 @@ function formatValue(value: boolean | number | string, valueType: ConstantValueT
   if (valueType === 'number') {
     return String(value);
   }
-  // String - truncate if too long and add quotes
+  // String - handle multi-line and long strings
   const str = String(value);
+  const lines = str.split('\n');
+  const isMultiLine = lines.length > 1;
+  const firstLine = lines[0];
+
+  // For multi-line: show first line with line count indicator
+  if (isMultiLine) {
+    const displayLine = firstLine.length > 15 ? firstLine.slice(0, 12) + '...' : firstLine;
+    return `"${displayLine}" +${lines.length - 1}`;
+  }
+
+  // Single line - truncate if too long
   if (str.length > 20) {
     return `"${str.slice(0, 17)}..."`;
   }

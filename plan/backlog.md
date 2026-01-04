@@ -52,7 +52,6 @@ Schema migration (`upgradeWorkflow`) is disabled during early development. When 
 - For the plan.yml workflow - why can I not create an edge from trigger.text -> agent?
 - The node ids are implicit - can we make those editable?
 - Show source (ui/cli/automatic) in the dashboard and history
-- For constant node, it'd be helpful to have a multi-line text for more detailed prompts.
 - For constant node, for string, it could be useful to be able to point to a file as well. 
 - Autocomplete: would be helpful to have autocomplete for {{ inputs.| }} input, as well as for the typescript function input
 - Implement 'wire node' - just a small, pass-through node that can be used for routing wires
