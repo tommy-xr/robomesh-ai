@@ -64,7 +64,13 @@ export function createServer(config: ServerConfig): Express {
 
   // Initialize trigger manager
   const triggerManager = getTriggerManager();
-  triggerManager.load().catch(console.error);
+  triggerManager.load().then(() => {
+    // Prune triggers for workspaces that no longer exist
+    const pruned = triggerManager.pruneOrphanedTriggers(workspaces);
+    if (pruned > 0) {
+      triggerManager.save().catch(console.error);
+    }
+  }).catch(console.error);
 
   // Wire up trigger firing to execute workflows
   triggerManager.onFire(async (trigger) => {
