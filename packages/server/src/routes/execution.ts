@@ -62,7 +62,7 @@ let executionState: ExecutionState = { isRunning: false };
 
 // Execution history (keyed by workspace/workflowPath)
 const executionHistory: Map<string, ExecutionHistoryEntry[]> = new Map();
-const MAX_HISTORY_PER_WORKFLOW = 10;
+const MAX_HISTORY_PER_WORKFLOW = 50;
 
 function getHistoryKey(workspace: string, workflowPath: string): string {
   return `${workspace}:${workflowPath}`;

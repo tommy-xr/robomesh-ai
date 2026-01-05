@@ -110,6 +110,11 @@ export function Dashboard() {
   const [newWorkflowModal, setNewWorkflowModal] = useState<{ workspace: string } | null>(null);
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [dangerouslySkipPermissions, setDangerouslySkipPermissions] = useState(false);
+  const [selectedWorkflowHistory, setSelectedWorkflowHistory] = useState<{
+    workspace: string;
+    path: string;
+  } | null>(null);
+  const [workflowHistory, setWorkflowHistory] = useState<ExecutionHistoryEntry[]>([]);
 
   // Fetch workflows from API
   const fetchWorkflows = useCallback(async () => {
@@ -176,6 +181,19 @@ export function Dashboard() {
       if (res.ok) {
         const data = await res.json();
         setDangerouslySkipPermissions(data.dangerouslySkipPermissions || false);
+      }
+    } catch {
+      // Ignore errors
+    }
+  }, []);
+
+  // Fetch workflow history for a specific workflow
+  const fetchWorkflowHistory = useCallback(async (workspace: string, path: string) => {
+    try {
+      const res = await fetch(`/api/execution/history?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(path)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setWorkflowHistory(data.history || []);
       }
     } catch {
       // Ignore errors
@@ -522,6 +540,16 @@ export function Dashboard() {
                                   </button>
                                 )}
                                 <button
+                                  className="history-btn"
+                                  onClick={() => {
+                                    setSelectedWorkflowHistory({ workspace: workflow.workspace, path: workflow.path });
+                                    fetchWorkflowHistory(workflow.workspace, workflow.path);
+                                  }}
+                                  title="View run history"
+                                >
+                                  History
+                                </button>
+                                <button
                                   className="open-btn"
                                   onClick={() => handleOpen(workflow)}
                                 >
@@ -540,29 +568,70 @@ export function Dashboard() {
         </div>
 
         <div className="status-panel">
-          <h2>Status</h2>
-
-          {executionStatus.isRunning ? (
-            <div className="execution-status running">
-              <div className="status-indicator"></div>
-              <div className="status-info">
-                <div className="status-workflow">{executionStatus.workflowPath}</div>
-                <div className="status-workspace">{executionStatus.workspace}</div>
-                {executionStatus.currentNode && (
-                  <div className="status-node">Node: {executionStatus.currentNode}</div>
-                )}
-                {executionStatus.progress && (
-                  <div className="status-progress">
-                    {executionStatus.progress.completed} / {executionStatus.progress.total} nodes
-                  </div>
+          {selectedWorkflowHistory ? (
+            <div className="history-panel">
+              <div className="history-header">
+                <h2>Run History</h2>
+                <button
+                  className="close-btn"
+                  onClick={() => setSelectedWorkflowHistory(null)}
+                  title="Close history"
+                >&times;</button>
+              </div>
+              <div className="history-workflow-info">
+                {selectedWorkflowHistory.path}
+              </div>
+              <div className="history-list">
+                {workflowHistory.length > 0 ? (
+                  workflowHistory.map(run => (
+                    <div
+                      key={run.id}
+                      className={`history-item ${run.status}`}
+                      onClick={() => handleViewRun(run)}
+                    >
+                      <span className="status-icon">
+                        {run.status === 'completed' ? '\u2714' : run.status === 'failed' ? '\u2718' : '\u23F9'}
+                      </span>
+                      <span className="run-time">{formatRelativeTime(run.completedAt)}</span>
+                      {run.source && SOURCE_LABELS[run.source] && (
+                        <span className="run-source" title={SOURCE_LABELS[run.source].label}>
+                          {SOURCE_LABELS[run.source].icon}
+                        </span>
+                      )}
+                      <span className="run-duration">{formatDuration(run.duration)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-history">No runs yet</div>
                 )}
               </div>
             </div>
           ) : (
-            <div className="execution-status idle">
-              <div className="status-indicator"></div>
-              <div className="status-info">Idle</div>
-            </div>
+            <>
+              <h2>Status</h2>
+              {executionStatus.isRunning ? (
+                <div className="execution-status running">
+                  <div className="status-indicator"></div>
+                  <div className="status-info">
+                    <div className="status-workflow">{executionStatus.workflowPath}</div>
+                    <div className="status-workspace">{executionStatus.workspace}</div>
+                    {executionStatus.currentNode && (
+                      <div className="status-node">Node: {executionStatus.currentNode}</div>
+                    )}
+                    {executionStatus.progress && (
+                      <div className="status-progress">
+                        {executionStatus.progress.completed} / {executionStatus.progress.total} nodes
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="execution-status idle">
+                  <div className="status-indicator"></div>
+                  <div className="status-info">Idle</div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

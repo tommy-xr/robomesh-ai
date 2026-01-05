@@ -776,3 +776,128 @@
   color: #ffcc00;
   font-weight: 600;
 }
+
+/* History Button */
+.history-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.history-btn:hover {
+  border-color: var(--accent);
+}
+
+/* History Panel */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.history-header h2 {
+  margin: 0;
+}
+
+.history-header .close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.history-header .close-btn:hover {
+  color: var(--text-primary);
+}
+
+.history-workflow-info {
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.history-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-primary);
+}
+
+.history-item .status-icon {
+  font-size: 0.9rem;
+}
+
+.history-item.completed .status-icon {
+  color: #34d399;
+}
+
+.history-item.failed .status-icon {
+  color: #f87171;
+}
+
+.history-item.cancelled .status-icon {
+  color: var(--node-script);
+}
+
+.history-item .run-time {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.history-item .run-source {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.history-item .run-duration {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-family: ui-monospace, monospace;
+}
+
+.no-history {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px;
+  font-style: italic;
+  font-size: 0.85rem;
+}
