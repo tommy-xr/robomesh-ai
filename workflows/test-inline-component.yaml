@@ -31,6 +31,8 @@ components:
           label: Uppercase
           script: echo "{{ inputs.text }}" | tr '[:lower:]' '[:upper:]'
           inputs:
+            - name: input
+              type: any
             - name: text
               type: string
           outputs:
@@ -106,11 +108,15 @@ nodes:
         echo "Original: {{ inputs.original }}"
         echo "Transformed: {{ inputs.transformed }}"
       inputs:
+        - name: input
+          type: any
         - name: original
           type: string
         - name: transformed
           type: string
       outputs:
+        - name: output
+          type: string
         - name: stdout
           type: string
         - name: stderr

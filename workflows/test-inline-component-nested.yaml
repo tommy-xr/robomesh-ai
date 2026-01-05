@@ -32,9 +32,13 @@ components:
           label: Uppercase
           script: echo "{{ inputs.text }}" | tr '[:lower:]' '[:upper:]'
           inputs:
+            - name: input
+              type: any
             - name: text
               type: string
           outputs:
+            - name: output
+              type: string
             - name: stdout
               type: string
             - name: stderr
@@ -103,9 +107,13 @@ components:
           label: Add Exclamation
           script: echo "{{ inputs.text }}!!!"
           inputs:
+            - name: input
+              type: any
             - name: text
               type: string
           outputs:
+            - name: output
+              type: string
             - name: stdout
               type: string
             - name: stderr
@@ -181,11 +189,15 @@ nodes:
         echo "Original: {{ inputs.original }}"
         echo "Shouted: {{ inputs.shouted }}"
       inputs:
+        - name: input
+          type: any
         - name: original
           type: string
         - name: shouted
           type: string
       outputs:
+        - name: output
+          type: string
         - name: stdout
           type: string
         - name: stderr

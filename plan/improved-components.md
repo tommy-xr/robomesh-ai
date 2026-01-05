@@ -540,14 +540,29 @@ workflows/test-inline-component-nested.yaml   # Inline component containing anot
 - Nested inline component support works - components can reference sibling inline components
 - `inlineComponents` passed through ExecuteOptions to support nested resolution
 
-### Phase 2: Inline Component Designer UX
-- [ ] Update CreateComponentDialog with "Save as file" checkbox
-- [ ] Implement inline component creation (default)
-- [ ] Update navigation stack for inline components
-- [ ] Implement drill-down editing for inline components
-- [ ] Implement "Extract to file" refactoring action
-- [ ] Implement "Convert to inline" refactoring action
-- [ ] Update config panel to show inline vs file indicator
+### Phase 2: Inline Component Designer UX (In Progress)
+
+- [x] CreateComponentDialog - simplified to only create inline components (no file option)
+- [x] Implement inline component creation - creates node with `componentRef`
+- [x] Update navigation stack for inline components (`componentRef` support)
+- [x] Implement drill-down editing for inline components (double-click, breadcrumb)
+- [x] Auto-save inline component changes when navigating back
+- [x] Update config panel to show inline vs file indicator (blue dot = inline, green dot = file)
+- [ ] "Extract to file" refactoring action (added to backlog - right-click → Refactor → Extract to file)
+
+**Files Changed:**
+- `packages/designer/src/components/CreateComponentDialog.tsx` - Simplified to inline-only (removed `saveAsFile` option)
+- `packages/designer/src/components/Sidebar.tsx` - Added `onCreateInlineComponent` prop, `buildInlineComponent()` helper
+- `packages/designer/src/components/Header.tsx` - Updated `BreadcrumbItem` to include `componentRef`, updated breadcrumb rendering
+- `packages/designer/src/App.tsx` - Added `inlineComponents` state, updated `onNodeDoubleClick` for inline components, updated `onNavigateBreadcrumb` with auto-save for inline components
+- `packages/designer/src/lib/workflow.ts` - Updated schema version to 3, added `components` to schema
+- `packages/designer/src/components/ConfigPanel.tsx` - Updated `ComponentConfig` to show source type (inline/file)
+
+**Implementation Notes:**
+- Inline components auto-save when navigating back (changes stored in `inlineComponents` state)
+- Breadcrumb shows 📦 icon for both inline and file-based components
+- File-based workflows also auto-save with inline components included
+- Config panel shows source type with colored indicator: blue = inline, green = file
 
 **Testing**: `pnpm run test:e2e` (Playwright)
 ```

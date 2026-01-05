@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { DragEvent } from 'react';
-import type { ValueType } from '@robomesh/core';
+import type { ValueType, InlineComponent, PortDefinition } from '@robomesh/core';
 import type { NodeType } from '../nodes';
-import { listComponents, createComponent, type ComponentInfo } from '../lib/api';
+import { listComponents, type ComponentInfo } from '../lib/api';
 import { CreateComponentDialog, type NewComponentData } from './CreateComponentDialog';
+
+export interface SidebarProps {
+  onCreateInlineComponent?: (name: string, component: InlineComponent) => void;
+}
 
 interface PaletteItem {
   type: NodeType;
@@ -104,7 +108,52 @@ function AccordionSection({ title, isOpen, onToggle, count, action, children }: 
   );
 }
 
-export function Sidebar() {
+/**
+ * Build an InlineComponent from dialog data
+ */
+function buildInlineComponent(data: NewComponentData): InlineComponent {
+  const inputs: PortDefinition[] = data.inputs;
+  const outputs: PortDefinition[] = data.outputs;
+
+  return {
+    interface: { inputs, outputs },
+    nodes: [
+      {
+        id: 'input-proxy',
+        type: 'interface-input',
+        position: { x: 100, y: 100 },
+        data: {
+          nodeType: 'interface-input',
+          label: 'Input',
+          outputs: inputs.map(i => ({ ...i })),
+        },
+      },
+      {
+        id: 'output-proxy',
+        type: 'interface-output',
+        position: { x: 400, y: 100 },
+        data: {
+          nodeType: 'interface-output',
+          label: 'Output',
+          inputs: outputs.map(o => ({ ...o })),
+        },
+      },
+    ],
+    edges: [],  // User will add edges when editing the component
+  };
+}
+
+/**
+ * Generate a unique component key from the name
+ */
+function toComponentKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+export function Sidebar({ onCreateInlineComponent }: SidebarProps) {
   const [components, setComponents] = useState<ComponentInfo[]>([]);
   const [componentsError, setComponentsError] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -143,20 +192,15 @@ export function Sidebar() {
   }, []);
 
   const handleCreateComponent = async (data: NewComponentData) => {
-    try {
-      await createComponent({
-        name: data.name,
-        description: data.description,
-        filename: data.filename,
-        inputs: data.inputs,
-        outputs: data.outputs,
-      });
+    // Always create inline component
+    if (onCreateInlineComponent) {
+      const componentKey = toComponentKey(data.name);
+      const component = buildInlineComponent(data);
+      onCreateInlineComponent(componentKey, component);
       setShowCreateDialog(false);
-      // Refresh components list
-      loadComponents();
-    } catch (err) {
-      console.error('Failed to create component:', err);
-      setComponentsError(err instanceof Error ? err.message : 'Failed to create component');
+    } else {
+      console.warn('onCreateInlineComponent not provided - cannot create inline component');
+      setComponentsError('Inline components not supported in this context');
     }
   };
 

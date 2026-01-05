@@ -35,11 +35,15 @@ components:
           label: Concat
           script: echo "{{ inputs.prefix }}{{ inputs.text }}"
           inputs:
+            - name: input
+              type: any
             - name: text
               type: string
             - name: prefix
               type: string
           outputs:
+            - name: output
+              type: string
             - name: stdout
               type: string
             - name: stderr
@@ -159,11 +163,15 @@ nodes:
         echo "Result 1: {{ inputs.result1 }}"
         echo "Result 2: {{ inputs.result2 }}"
       inputs:
+        - name: input
+          type: any
         - name: result1
           type: string
         - name: result2
           type: string
       outputs:
+        - name: output
+          type: string
         - name: stdout
           type: string
         - name: stderr
