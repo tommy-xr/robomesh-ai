@@ -29,6 +29,13 @@ import type { ComponentWorkflow } from './lib/api';
 import type { ExecutionStatus } from './nodes';
 import './App.css';
 
+// Strip execution state from node data before saving to file
+// Execution state is runtime-only and should not be persisted in workflow YAML
+const stripExecutionState = (data: Record<string, unknown>): Record<string, unknown> => {
+  const { executionStatus, executionOutput, executionError, ...cleanData } = data;
+  return cleanData;
+};
+
 // Navigation stack item for component drill-down
 interface NavigationItem {
   name: string;
@@ -422,7 +429,7 @@ function Flow() {
             id: n.id,
             type: n.type || 'agent',
             position: n.position,
-            data: n.data as Record<string, unknown>,
+            data: stripExecutionState(n.data as Record<string, unknown>),
             parentId: n.parentId,
             extent: n.extent === 'parent' ? ('parent' as const) : undefined,
             style: n.style as { width?: number; height?: number },
@@ -1062,7 +1069,7 @@ function Flow() {
         id: n.id,
         type: n.type || 'agent',
         position: n.position,
-        data: n.data,
+        data: stripExecutionState(n.data as Record<string, unknown>),
       }));
 
       // Build edges for saving (convert null to undefined for type compatibility)
