@@ -413,6 +413,33 @@ export class TriggerManager {
   clear(): void {
     this.triggers.clear();
   }
+
+  /**
+   * Remove triggers for workspaces that no longer exist
+   * Returns the number of triggers pruned
+   */
+  pruneOrphanedTriggers(validWorkspaces: string[]): number {
+    // Extract workspace names from paths (basename)
+    const validNames = new Set(validWorkspaces.map(ws => {
+      const parts = ws.split(/[/\\]/);
+      return parts[parts.length - 1];
+    }));
+
+    let pruned = 0;
+    for (const [id, trigger] of this.triggers) {
+      if (!validNames.has(trigger.workspace)) {
+        console.log(`[TriggerManager] Removing orphaned trigger: ${id} (workspace "${trigger.workspace}" no longer exists)`);
+        this.triggers.delete(id);
+        pruned++;
+      }
+    }
+
+    if (pruned > 0) {
+      console.log(`[TriggerManager] Pruned ${pruned} orphaned trigger(s)`);
+    }
+
+    return pruned;
+  }
 }
 
 // Singleton instance for the application

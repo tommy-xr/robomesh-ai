@@ -13,5 +13,5 @@ nodes:
       label: Start
       triggerType: idle
       nodeType: trigger
-      idleMinutes: 60
+      idleMinutes: 2
 edges: []
