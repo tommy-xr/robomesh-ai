@@ -34,13 +34,22 @@ nodes:
           type: string
         - name: name
           type: string
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
+        - name: output
+          type: string
         - name: stdout
           type: string
+          description: Standard output
         - name: stderr
           type: string
+          description: Standard error
         - name: exitCode
           type: number
+          description: Exit code (0 = success)
 edges:
   - id: e1
     source: trigger-1

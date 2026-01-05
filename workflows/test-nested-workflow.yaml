@@ -12,15 +12,8 @@ nodes:
       nodeType: trigger
       label: Start
       triggerType: manual
-      outputs:
-        - name: timestamp
-          type: string
-        - name: type
-          type: string
-        - name: text
-          type: string
-        - name: params
-          type: json
+      inputs: []
+      outputs: []
 
   - id: const-name
     type: constant
@@ -88,15 +81,27 @@ nodes:
       inputs:
         - name: result
           type: string
+        - name: input
+          type: any
+          required: false
+          description: Generic input for template interpolation
       outputs:
+        - name: output
+          type: string
         - name: stdout
           type: string
+          description: Standard output
         - name: stderr
           type: string
+          description: Standard error
         - name: exitCode
           type: number
+          description: Exit code (0 = success)
 
 edges:
+  - id: e0
+    source: trigger-1
+    target: const-name
   - id: e1
     source: const-name
     target: nested-1
